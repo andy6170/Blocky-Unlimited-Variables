@@ -137,39 +137,49 @@
 
   // ---------- usage counter (fixed) ----------
   function countVariableUsage(ws, varDef) {
-    if (!ws || !varDef || !varDef.id) return 0;
-    const targetId = varDef.id;
-    let count = 0;
-    const seenBlocks = new Set();
+  if (!ws || !varDef || !varDef.id) return 0;
+  const targetId = varDef.id;
+  let count = 0;
+  const seenBlocks = new Set();
 
-    function scanBlock(block) {
-      if (!block || seenBlocks.has(block.id)) return;
-      seenBlocks.add(block.id);
+  function scanBlock(block) {
+    if (!block || seenBlocks.has(block.id)) return;
+    seenBlocks.add(block.id);
 
-      // If this block is a variable reference, check its VAR field
-      if (block.fields && block.fields.VAR && block.fields.VAR.id === targetId) {
-        count++;
-      }
+    // Direct variable reference
+    if (block.fields && block.fields.VAR && block.fields.VAR.id === targetId) {
+      count++;
+    }
 
-      // Recurse through inputs
-      if (block.inputList) {
-        for (const input of block.inputList) {
-          if (input.connection && input.connection.targetBlock) {
-            scanBlock(input.connection.targetBlock());
-          }
+    // Standard Blockly inputList
+    if (Array.isArray(block.inputList)) {
+      for (const input of block.inputList) {
+        if (input.connection && input.connection.targetBlock) {
+          scanBlock(input.connection.targetBlock());
         }
-      }
-
-      // Recurse next in sequence
-      if (block.nextConnection && block.nextConnection.targetBlock) {
-        scanBlock(block.nextConnection.targetBlock());
       }
     }
 
-    const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-    allBlocks.forEach(scanBlock);
-    return count;
+    // Extended Portal input objects
+    if (block.inputs && typeof block.inputs === "object") {
+      for (const key in block.inputs) {
+        const inputBlock = block.inputs[key]?.block;
+        if (inputBlock) scanBlock(inputBlock);
+      }
+    }
+
+    // Next block in sequence
+    if (block.nextConnection && block.nextConnection.targetBlock) {
+      scanBlock(block.nextConnection.targetBlock());
+    }
   }
+
+  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+  allBlocks.forEach(scanBlock);
+
+  return count;
+}
+
 
   // ---------- inject CSS ----------
   (function injectStyle(){
