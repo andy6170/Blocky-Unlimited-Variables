@@ -1,4 +1,5 @@
-// Extended Variable Manager - stable version with UI tweaks
+// Extended Variable Manager - Dark theme with BF6 accent (#ff0a03)
+// Final stable build (left column 240px)
 (function () {
   const pluginId = "bf-portal-extended-variable-manager";
   let plugin = null;
@@ -15,27 +16,42 @@
   // Storage key
   const STORAGE_KEY = pluginId + "-data-v1";
 
-  // Categories (as requested)
+  // Categories
   const CATEGORIES = [
     "Global","AreaTrigger","CapturePoint","EmplacementSpawner","HQ","InteractPoint","LootSpawner","MCOM",
     "Player","RingOfFire","ScreenEffect","Sector","SFX","SpatialObject","Spawner","SpawnPoint","Team",
     "Vehicle","VehicleSpawner","VFX","VO","WaypointPath","WorldIcon"
   ];
 
-  // State with default
+  // Theme (dark + BF6 accent)
+  const THEME = {
+    bg: "#0b0b0c",
+    panel: "#0f0f10",
+    sidebar: "#121214",
+    sidebarHover: "#1a1b1d",
+    sidebarSelectedBg: "rgba(255, 10, 3, 0.08)", // subtle BF6 red
+    accent: "#ff0a03", // BF6 red
+    text: "#e9eef2",
+    muted: "#9aa1a8",
+    varRow: "#0e0e0f",
+    btnGreen: "#2ca72c",
+    btnGreenHover: "#34c934",
+    btnGray: "#2b2b2b",
+    btnGrayHover: "#3a3a3a",
+    btnRed: "#a73232",
+    btnRedHover: "#c93b3b"
+  };
+
+  // State
   let state = {
     nextIdCounter: 1,
     variables: {}
   };
-
-  // Ensure category containers exist in state
   function ensureStateCategories() {
-    for (const c of CATEGORIES) {
-      if (!state.variables[c]) state.variables[c] = [];
-    }
+    for (const c of CATEGORIES) if (!state.variables[c]) state.variables[c] = [];
   }
 
-  // Persistence (prefer BF portal shared storage)
+  // Persistence helpers
   function saveState() {
     try {
       if (typeof BF2042Portal !== "undefined" && BF2042Portal.Shared && typeof BF2042Portal.Shared.saveToLocalStorage === "function") {
@@ -57,16 +73,28 @@
         if (raw) loaded = JSON.parse(raw);
       }
       if (loaded && typeof loaded === "object") {
-        // shallow merge
         state = Object.assign({}, state, loaded);
       }
     } catch (e) {
       console.warn("[ExtVars] Load failed:", e);
     }
     ensureStateCategories();
+    // ensure nextIdCounter is at least above existing EV_ ids
+    let max = state.nextIdCounter || 1;
+    try {
+      for (const cat of CATEGORIES) {
+        for (const v of state.variables[cat] || []) {
+          if (v && typeof v.id === "string" && v.id.startsWith("EV_")) {
+            const n = parseInt(v.id.slice(3), 10);
+            if (!isNaN(n) && n >= max) max = n + 1;
+          }
+        }
+      }
+      state.nextIdCounter = max;
+    } catch (e) {}
   }
 
-  // Safe workspace accessor
+  // Workspace accessor (defensive)
   function getMainWorkspaceSafe() {
     try {
       if (typeof _Blockly !== "undefined" && _Blockly && typeof _Blockly.getMainWorkspace === "function") return _Blockly.getMainWorkspace();
@@ -85,11 +113,8 @@
       if (typeof ws.getVariableMap === "function") return ws.getVariableMap();
       if (ws.variableMap) return ws.variableMap;
       return null;
-    } catch (e) {
-      return null;
-    }
+    } catch (e) { return null; }
   }
-
   function workspaceHasVariableWithId(ws, id) {
     try {
       const map = workspaceGetVariableMap(ws);
@@ -104,11 +129,8 @@
         return map.getVariables().some(v => v.id === id);
       }
       return false;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
-
   function workspaceHasVariableWithName(ws, name) {
     try {
       const map = workspaceGetVariableMap(ws);
@@ -123,20 +145,13 @@
         return map.getVariables().some(v => v.name === name);
       }
       return false;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
-
   function createWorkspaceVariable(ws, name, type, id) {
     try {
       const map = workspaceGetVariableMap(ws);
       if (map && typeof map.createVariable === "function") {
-        try {
-          return map.createVariable(name, type || "", id);
-        } catch (e) {
-          try { return map.createVariable(name, type || "", undefined); } catch (e2) {}
-        }
+        try { return map.createVariable(name, type || "", id); } catch (e) { try { return map.createVariable(name, type || "", undefined); } catch (e2) {} }
       }
       if (typeof ws.createVariable === "function") {
         try { return ws.createVariable(name, type || "", id); } catch (e) { try { return ws.createVariable(name, type || "", undefined); } catch (e2) {} }
@@ -144,12 +159,9 @@
       if (typeof Blockly !== "undefined" && Blockly.Variables && typeof Blockly.Variables.createVariable === "function") {
         try { return Blockly.Variables.createVariable(ws, name, type || "", id); } catch (e) {}
       }
-    } catch (e) {
-      console.warn("[ExtVars] createWorkspaceVariable error:", e);
-    }
+    } catch (e) { console.warn("[ExtVars] createWorkspaceVariable error:", e); }
     return null;
   }
-
   function deleteWorkspaceVariable(ws, idOrName) {
     try {
       const map = workspaceGetVariableMap(ws);
@@ -167,13 +179,11 @@
           try { vs.splice(idx, 1); return true; } catch (e) {}
         }
       }
-    } catch (e) {
-      console.warn("[ExtVars] deleteWorkspaceVariable error:", e);
-    }
+    } catch (e) { console.warn("[ExtVars] deleteWorkspaceVariable error:", e); }
     return false;
   }
 
-  // Traversal helper for serialized blocks
+  // Traverse serialized nodes
   function traverseSerializedBlocks(node, cb) {
     if (!node) return;
     cb(node);
@@ -186,7 +196,7 @@
     if (node.next && node.next.block) traverseSerializedBlocks(node.next.block, cb);
   }
 
-  // Get usage count by scanning workspace serialized blocks (robust)
+  // Count usage by scanning workspace blocks (robust)
   function countVariableUsage(ws, varDef) {
     let count = 0;
     try {
@@ -196,8 +206,9 @@
           let serial = null;
           if (_Blockly && _Blockly.serialization && _Blockly.serialization.blocks && typeof _Blockly.serialization.blocks.save === "function") {
             serial = _Blockly.serialization.blocks.save(blk);
+          } else if (Blockly && Blockly.serialization && Blockly.serialization.blocks && typeof Blockly.serialization.blocks.save === "function") {
+            serial = Blockly.serialization.blocks.save(blk);
           } else {
-            // best-effort: skip if no serializer
             continue;
           }
           traverseSerializedBlocks(serial, (node) => {
@@ -211,25 +222,20 @@
               if (vf === varDef.name) count++;
             }
           });
-        } catch (e) {
-          // ignore
-        }
+        } catch (e) {}
       }
-    } catch (e) {
-      console.warn("[ExtVars] usage count error:", e);
-    }
+    } catch (e) { console.warn("[ExtVars] usage count error:", e); }
     return count;
   }
 
-  // Make next sequential id
+  // make next sequential EV id (ensures unique)
   function makeNextSequentialId() {
-    // use state.nextIdCounter
     const id = "EV_" + String(state.nextIdCounter).padStart(4, "0");
     state.nextIdCounter += 1;
     return id;
   }
 
-  // Sanitization & registration helpers (kept simple here)
+  // Register variables in workspace (create missing)
   function registerAllVariablesInWorkspace(ws) {
     try {
       for (const cat of CATEGORIES) {
@@ -240,14 +246,64 @@
           }
         }
       }
-    } catch (e) {
-      console.warn("[ExtVars] registerAllVariablesInWorkspace error:", e);
+      // best-effort trigger: some editors update on this event
+      try { document.dispatchEvent(new Event("variables_refreshed")); } catch (e) {}
+    } catch (e) { console.warn("[ExtVars] registerAllVariablesInWorkspace error:", e); }
+  }
+
+  // Resync workspace variable map from state.mod.variables (hard sync)
+  function resyncWorkspaceVariableMap(ws) {
+    try {
+      if (!ws) return;
+      const map = workspaceGetVariableMap(ws);
+      if (!map) return;
+      // attempt to remove existing variables then re-add from state
+      try {
+        if (typeof map.getVariables === "function") {
+          const existing = map.getVariables();
+          // delete by id where possible
+          for (const ex of Array.from(existing || [])) {
+            try {
+              if (typeof map.deleteVariableById === "function" && ex.getId) {
+                try { map.deleteVariableById(ex.getId()); } catch (e) {}
+              } else if (typeof map.deleteVariable === "function") {
+                try { map.deleteVariable(ex); } catch (e) {}
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+      // re-add
+      for (const cat of CATEGORIES) {
+        for (const v of state.variables[cat] || []) {
+          try { createWorkspaceVariable(ws, v.name, v.type || cat, v.id); } catch (e) {}
+        }
+      }
+      // trigger UI refresh hooks if present
+      try { if (ws.refreshToolboxSelection) ws.refreshToolboxSelection(); } catch (e) {}
+      try { if (ws.toolbox_) ws.toolbox_.refreshSelection && ws.toolbox_.refreshSelection(); } catch (e) {}
+      try { document.dispatchEvent(new Event("variables_refreshed")); } catch (e) {}
+    } catch (e) { console.warn("[ExtVars] resyncWorkspaceVariableMap error:", e); }
+  }
+
+  // UI modal management
+  let modalOverlay = null;
+  function removeModal() {
+    if (modalOverlay) {
+      try { modalOverlay.remove(); } catch (e) {}
+      modalOverlay = null;
     }
   }
 
-  // UI creation (modal)
-  let modalOverlay = null;
-  function createModal() {
+  // Primary modal builder (stable, full-featured)
+  function openModal() {
+    // ensure latest state
+    loadState();
+    ensureStateCategories();
+    const ws = getMainWorkspaceSafe();
+    if (ws) registerAllVariablesInWorkspace(ws);
+
+    // close any previous
     removeModal();
 
     modalOverlay = document.createElement("div");
@@ -256,7 +312,7 @@
     modalOverlay.style.left = "0";
     modalOverlay.style.width = "100%";
     modalOverlay.style.height = "100%";
-    modalOverlay.style.background = "rgba(0,0,0,0.6)";
+    modalOverlay.style.background = "rgba(0,0,0,0.62)";
     modalOverlay.style.zIndex = "999999";
     modalOverlay.style.display = "flex";
     modalOverlay.style.alignItems = "center";
@@ -264,24 +320,24 @@
 
     const modalEl = document.createElement("div");
     modalEl.style.width = "min(1100px, 92vw)";
-    modalEl.style.height = "min(700px, 86vh)";
-    modalEl.style.background = "#0f0f10";
-    modalEl.style.borderRadius = "8px";
-    modalEl.style.boxShadow = "0 8px 40px rgba(0,0,0,0.8)";
-    modalEl.style.color = "#fff";
+    modalEl.style.height = "min(720px, 88vh)";
+    modalEl.style.background = THEME.panel;
+    modalEl.style.borderRadius = "10px";
+    modalEl.style.boxShadow = "0 12px 48px rgba(0,0,0,0.75)";
+    modalEl.style.color = THEME.text;
     modalEl.style.padding = "14px";
     modalEl.style.overflow = "hidden";
     modalEl.style.display = "flex";
     modalEl.style.flexDirection = "column";
-    modalEl.style.fontFamily = "Arial, sans-serif";
+    modalEl.style.fontFamily = "Inter, Arial, sans-serif";
     modalOverlay.appendChild(modalEl);
 
     // header
     const header = document.createElement("div");
     header.style.display = "flex";
-    header.style.alignItems = "center";
     header.style.justifyContent = "space-between";
-    header.style.marginBottom = "8px";
+    header.style.alignItems = "center";
+    header.style.marginBottom = "10px";
     const title = document.createElement("div");
     title.innerText = "Extended Variable Manager";
     title.style.fontSize = "18px";
@@ -289,24 +345,26 @@
     header.appendChild(title);
     modalEl.appendChild(header);
 
-    // main
+    // content
     const content = document.createElement("div");
     content.style.display = "flex";
     content.style.flex = "1 1 auto";
-    content.style.overflow = "hidden";
     content.style.gap = "12px";
+    content.style.overflow = "hidden";
+    modalEl.appendChild(content);
 
-    // left column (wider)
+    // left (categories)
     const left = document.createElement("div");
-    left.style.width = "260px"; // widened
-    left.style.background = "#121213";
-    left.style.borderRadius = "6px";
-    left.style.padding = "8px";
+    left.style.width = "240px"; // chosen custom width
+    left.style.background = THEME.sidebar;
+    left.style.borderRadius = "8px";
+    left.style.padding = "10px";
     left.style.overflowY = "auto";
+    content.appendChild(left);
 
     const catTitle = document.createElement("div");
     catTitle.innerText = "Categories";
-    catTitle.style.fontWeight = "600";
+    catTitle.style.fontWeight = "700";
     catTitle.style.marginBottom = "8px";
     left.appendChild(catTitle);
 
@@ -314,46 +372,29 @@
     catList.style.display = "flex";
     catList.style.flexDirection = "column";
     catList.style.gap = "6px";
-
-    // build category buttons
-    let currentCategory = CATEGORIES[0];
-    function renderCategories() {
-      catList.innerHTML = "";
-      CATEGORIES.forEach((cat) => {
-        const b = document.createElement("button");
-        b.innerText = `${cat} (${(state.variables[cat]||[]).length})`;
-        b.style.textAlign = "left";
-        b.style.padding = "6px";
-        b.style.border = "none";
-        b.style.borderRadius = "4px";
-        b.style.background = "#141416";
-        b.style.color = "#ddd";
-        b.style.cursor = "pointer";
-        b.dataset.category = cat;
-        if (cat === currentCategory) {
-          b.style.background = "rgba(255,255,255,0.12)";
-          b.style.borderLeft = "3px solid #00eaff";
-        }
-        b.onclick = () => {
-          currentCategory = cat;
-          renderCategories();
-          renderVariables();
-        };
-        catList.appendChild(b);
-      });
-    }
     left.appendChild(catList);
 
-    // center list
+    // center (variables)
     const center = document.createElement("div");
     center.style.flex = "1 1 auto";
-    center.style.background = "#0b0b0c";
-    center.style.borderRadius = "6px";
-    center.style.padding = "8px";
+    center.style.background = THEME.bg;
+    center.style.borderRadius = "8px";
+    center.style.padding = "10px";
     center.style.overflow = "auto";
     center.style.display = "flex";
     center.style.flexDirection = "column";
+    content.appendChild(center);
 
+    // right (details)
+    const right = document.createElement("div");
+    right.style.width = "320px";
+    right.style.background = THEME.sidebar;
+    right.style.borderRadius = "8px";
+    right.style.padding = "10px";
+    right.style.overflow = "auto";
+    content.appendChild(right);
+
+    // center header
     const centerHeader = document.createElement("div");
     centerHeader.style.display = "flex";
     centerHeader.style.justifyContent = "space-between";
@@ -362,118 +403,142 @@
 
     const centerTitle = document.createElement("div");
     centerTitle.innerText = "Variables";
-    centerTitle.style.fontWeight = "600";
+    centerTitle.style.fontWeight = "700";
 
-    const addAllBtn = document.createElement("button");
-    addAllBtn.textContent = "Add Variable";
-    addAllBtn.style.padding = "6px 10px";
-    addAllBtn.style.border = "none";
-    addAllBtn.style.borderRadius = "6px";
-    addAllBtn.style.background = "#2a7a2a";
-    addAllBtn.style.color = "#fff";
-
-    addAllBtn.onclick = () => {
-      createVariableViaUi(currentCategory);
-    };
+    const addBtn = document.createElement("button");
+    addBtn.innerText = "Add Variable";
+    addBtn.style.padding = "6px 10px";
+    addBtn.style.border = "none";
+    addBtn.style.borderRadius = "6px";
+    addBtn.style.background = THEME.btnGreen;
+    addBtn.style.color = "#fff";
+    addBtn.style.cursor = "pointer";
+    addBtn.onmouseenter = () => addBtn.style.background = THEME.btnGreenHover;
+    addBtn.onmouseleave = () => addBtn.style.background = THEME.btnGreen;
 
     centerHeader.appendChild(centerTitle);
-    centerHeader.appendChild(addAllBtn);
+    centerHeader.appendChild(addBtn);
     center.appendChild(centerHeader);
 
-    const varList = document.createElement("div");
-    varList.style.display = "flex";
-    varList.style.flexDirection = "column";
-    varList.style.gap = "6px";
-    varList.style.flex = "1 1 auto";
-    varList.style.minHeight = "0";
-    center.appendChild(varList);
+    const varListContainer = document.createElement("div");
+    varListContainer.style.display = "flex";
+    varListContainer.style.flexDirection = "column";
+    varListContainer.style.gap = "8px";
+    varListContainer.style.flex = "1 1 auto";
+    varListContainer.style.minHeight = "0";
+    varListContainer.style.overflow = "auto";
+    center.appendChild(varListContainer);
 
-    // right details
-    const right = document.createElement("div");
-    right.style.width = "300px";
-    right.style.background = "#111112";
-    right.style.borderRadius = "6px";
-    right.style.padding = "8px";
-    right.style.overflow = "auto";
-
+    // right details header
     const rightTitle = document.createElement("div");
     rightTitle.innerText = "Details";
-    rightTitle.style.fontWeight = "600";
+    rightTitle.style.fontWeight = "700";
     rightTitle.style.marginBottom = "8px";
     right.appendChild(rightTitle);
 
     const detailBox = document.createElement("div");
-    detailBox.style.color = "#ddd";
+    detailBox.style.color = THEME.text;
     right.appendChild(detailBox);
 
-    content.appendChild(left);
-    content.appendChild(center);
-    content.appendChild(right);
+    // state for UI
+    let currentCategory = CATEGORIES[0];
 
-    modalEl.appendChild(content);
+    // Utils: isDuplicate in category
+    function isDuplicateName(category, name, skipId) {
+      const arr = state.variables[category] || [];
+      return arr.some(v => v.name.toLowerCase() === name.toLowerCase() && v.id !== skipId);
+    }
 
-    // bottom close button (bottom-right)
-    const closeBtn = document.createElement("button");
-    closeBtn.innerText = "Close";
-    closeBtn.style.padding = "8px 12px";
-    closeBtn.style.border = "none";
-    closeBtn.style.borderRadius = "6px";
-    closeBtn.style.background = "#2b2b2b";
-    closeBtn.style.color = "#fff";
-    closeBtn.style.alignSelf = "flex-end";
-    closeBtn.style.marginTop = "10px";
-    closeBtn.onclick = () => removeModal();
-    modalEl.appendChild(closeBtn);
+    // Render categories
+    function renderCategories() {
+      catList.innerHTML = "";
+      for (const cat of CATEGORIES) {
+        const btn = document.createElement("button");
+        btn.style.padding = "8px";
+        btn.style.textAlign = "left";
+        btn.style.border = "none";
+        btn.style.borderRadius = "6px";
+        btn.style.background = THEME.sidebar;
+        btn.style.color = THEME.text;
+        btn.style.cursor = "pointer";
+        btn.style.display = "flex";
+        btn.style.justifyContent = "space-between";
+        btn.dataset.category = cat;
+        btn.innerHTML = `<span style="font-weight:600">${cat}</span><span style="color:${THEME.muted}">${(state.variables[cat]||[]).length}</span>`;
 
-    modalOverlay.appendChild(modalEl);
-    document.body.appendChild(modalOverlay);
+        // hover
+        btn.onmouseenter = () => {
+          if (cat !== currentCategory) btn.style.background = THEME.sidebarHover;
+        };
+        btn.onmouseleave = () => {
+          if (cat !== currentCategory) btn.style.background = THEME.sidebar;
+        };
 
-    // render variables for currentCategory
+        // selected state
+        if (cat === currentCategory) {
+          btn.style.background = THEME.sidebarSelectedBg;
+          btn.style.borderLeft = `4px solid ${THEME.accent}`;
+        } else {
+          btn.style.borderLeft = "4px solid transparent";
+        }
+
+        btn.onclick = () => {
+          currentCategory = cat;
+          renderCategories();
+          renderVariables();
+          detailBox.innerHTML = "";
+        };
+        catList.appendChild(btn);
+      }
+    }
+
+    // Render variables for current category
     function renderVariables() {
-      varList.innerHTML = "";
-
+      varListContainer.innerHTML = "";
       const heading = document.createElement("div");
-      heading.style.fontWeight = "700";
+      heading.style.display = "flex";
+      heading.style.justifyContent = "space-between";
+      heading.style.alignItems = "center";
       heading.style.marginBottom = "6px";
-      heading.innerText = `${currentCategory}`;
-      varList.appendChild(heading);
+      heading.innerHTML = `<div style="font-weight:700">${currentCategory}</div><div style="color:${THEME.muted}">${(state.variables[currentCategory]||[]).length}</div>`;
+      varListContainer.appendChild(heading);
 
       const arr = state.variables[currentCategory] || [];
       if (arr.length === 0) {
         const empty = document.createElement("div");
-        empty.style.color = "#888";
+        empty.style.color = THEME.muted;
         empty.innerText = "(no variables)";
-        varList.appendChild(empty);
+        varListContainer.appendChild(empty);
+        return;
       }
 
       const ws = getMainWorkspaceSafe();
 
-      arr.forEach((v) => {
+      for (const v of arr) {
         const row = document.createElement("div");
         row.style.display = "flex";
         row.style.justifyContent = "space-between";
         row.style.alignItems = "center";
-        row.style.padding = "6px";
-        row.style.background = "#0d0d0e";
-        row.style.borderRadius = "4px";
+        row.style.padding = "8px";
+        row.style.background = THEME.varRow;
+        row.style.borderRadius = "6px";
 
-        const leftCol = document.createElement("div");
-        leftCol.style.display = "flex";
-        leftCol.style.flexDirection = "column";
+        const left = document.createElement("div");
+        left.style.display = "flex";
+        left.style.flexDirection = "column";
 
         const name = document.createElement("div");
         name.innerText = v.name;
         name.style.fontWeight = "600";
 
-        const meta = document.createElement("div");
-        meta.style.fontSize = "12px";
-        meta.style.color = "#9aa";
-        // show "In use: (X)" instead of ID
+        const usage = document.createElement("div");
+        usage.style.fontSize = "12px";
+        usage.style.color = THEME.muted;
         const usedCount = ws ? countVariableUsage(ws, v) : 0;
-        meta.innerText = `In use: (${usedCount})`;
+        usage.innerText = `In use: (${usedCount})`;
 
-        leftCol.appendChild(name);
-        leftCol.appendChild(meta);
+        left.appendChild(name);
+        left.appendChild(usage);
 
         const rightCol = document.createElement("div");
         rightCol.style.display = "flex";
@@ -481,43 +546,76 @@
 
         const editBtn = document.createElement("button");
         editBtn.innerText = "Edit";
-        editBtn.style.padding = "4px 6px";
+        editBtn.style.padding = "6px 8px";
         editBtn.style.border = "none";
-        editBtn.style.borderRadius = "4px";
-        editBtn.style.background = "#2b2b2b";
+        editBtn.style.borderRadius = "6px";
+        editBtn.style.background = THEME.btnGray;
         editBtn.style.color = "#fff";
+        editBtn.style.cursor = "pointer";
+        editBtn.onmouseenter = () => editBtn.style.background = THEME.btnGrayHover;
+        editBtn.onmouseleave = () => editBtn.style.background = THEME.btnGray;
         editBtn.onclick = () => openEditPanel(currentCategory, v);
 
         const delBtn = document.createElement("button");
         delBtn.innerText = "Delete";
-        delBtn.style.padding = "4px 6px";
+        delBtn.style.padding = "6px 8px";
         delBtn.style.border = "none";
-        delBtn.style.borderRadius = "4px";
-        delBtn.style.background = "#7a2a2a";
+        delBtn.style.borderRadius = "6px";
+        delBtn.style.background = THEME.btnRed;
         delBtn.style.color = "#fff";
+        delBtn.style.cursor = "pointer";
+        delBtn.onmouseenter = () => delBtn.style.background = THEME.btnRedHover;
+        delBtn.onmouseleave = () => delBtn.style.background = THEME.btnRed;
         delBtn.onclick = () => {
-          if (!confirm(`Delete variable "${v.name}"? This may break blocks that reference it.`)) return;
+          if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
           deleteVariable(currentCategory, v.id);
+          saveState();
+          // resync into workspace, and re-render
+          const ws2 = getMainWorkspaceSafe();
+          resyncWorkspaceVariableMap(ws2);
           renderCategories();
           renderVariables();
-          saveState();
+          detailBox.innerHTML = "";
         };
 
         rightCol.appendChild(editBtn);
         rightCol.appendChild(delBtn);
 
-        row.appendChild(leftCol);
+        row.appendChild(left);
         row.appendChild(rightCol);
-
-        varList.appendChild(row);
-      });
+        varListContainer.appendChild(row);
+      }
     }
 
+    // Add variable flow
+    addBtn.onclick = () => {
+      const nm = prompt("New variable name (no duplicates):");
+      if (!nm) return;
+      const t = nm.trim();
+      if (!t) return;
+      if (isDuplicateName(currentCategory, t)) {
+        alert("Duplicate name in this category not allowed.");
+        return;
+      }
+      const id = makeNextSequentialId();
+      const v = { id, name: t, type: currentCategory };
+      state.variables[currentCategory].push(v);
+      saveState();
+      // ensure workspace sees it immediately
+      const ws2 = getMainWorkspaceSafe();
+      if (ws2) {
+        try { createWorkspaceVariable(ws2, v.name, v.type, v.id); } catch (e) {}
+        resyncWorkspaceVariableMap(ws2);
+      }
+      renderCategories();
+      renderVariables();
+    };
+
+    // Edit panel (name only)
     function openEditPanel(category, varDef) {
       detailBox.innerHTML = "";
-
       const title = document.createElement("div");
-      title.innerText = `Edit: ${varDef.name}`;
+      title.innerText = `Edit variable`;
       title.style.fontWeight = "700";
       title.style.marginBottom = "8px";
       detailBox.appendChild(title);
@@ -525,138 +623,112 @@
       const nameLabel = document.createElement("div");
       nameLabel.innerText = "Name";
       nameLabel.style.fontSize = "12px";
+      nameLabel.style.color = THEME.muted;
       detailBox.appendChild(nameLabel);
 
       const nameInput = document.createElement("input");
       nameInput.value = varDef.name;
       nameInput.style.width = "100%";
-      nameInput.style.padding = "6px";
-      nameInput.style.marginBottom = "8px";
+      nameInput.style.padding = "8px";
+      nameInput.style.marginTop = "6px";
+      nameInput.style.marginBottom = "10px";
+      nameInput.style.borderRadius = "6px";
+      nameInput.style.border = "1px solid #222";
+      nameInput.style.background = "#0b0b0c";
+      nameInput.style.color = THEME.text;
       detailBox.appendChild(nameInput);
 
-      // Note: type editing disabled — only name editable
       const saveBtn = document.createElement("button");
       saveBtn.innerText = "Save";
-      saveBtn.style.padding = "6px";
+      saveBtn.style.padding = "8px 12px";
       saveBtn.style.border = "none";
       saveBtn.style.borderRadius = "6px";
-      saveBtn.style.background = "#2b7a2b";
+      saveBtn.style.background = THEME.btnGreen;
       saveBtn.style.color = "#fff";
+      saveBtn.style.cursor = "pointer";
+      saveBtn.onmouseenter = () => saveBtn.style.background = THEME.btnGreenHover;
+      saveBtn.onmouseleave = () => saveBtn.style.background = THEME.btnGreen;
       saveBtn.onclick = () => {
         const newName = nameInput.value.trim();
-        if (!newName) {
-          alert("Name cannot be empty");
-          return;
-        }
-        if (isDuplicateName(category, newName, varDef.id)) {
-          alert("Duplicate variable name not allowed in same category");
-          return;
-        }
+        if (!newName) { alert("Name cannot be empty"); return; }
+        if (isDuplicateName(category, newName, varDef.id)) { alert("Duplicate name not allowed in category"); return; }
         varDef.name = newName;
-
-        // update workspace variable if present
+        saveState();
+        // attempt to update workspace variable object (best-effort)
         try {
-          const ws2 = getMainWorkspaceSafe();
-          const map = workspaceGetVariableMap(ws2);
+          const ws3 = getMainWorkspaceSafe();
+          const map = workspaceGetVariableMap(ws3);
           if (map) {
-            let existing = null;
-            if (typeof map.getVariableById === "function") existing = map.getVariableById(varDef.id);
-            if (!existing && typeof map.getVariable === "function") existing = map.getVariable(varDef.id) || map.getVariable(varDef.name);
-            if (existing) {
-              try { existing.name = newName; } catch (e) {}
+            if (typeof map.getVariableById === "function") {
+              const existing = map.getVariableById(varDef.id);
+              if (existing && existing.name !== undefined) existing.name = newName;
             }
           }
-        } catch (e) { console.warn(e); }
-
-        saveState();
+        } catch (e) {}
         renderVariables();
         detailBox.innerHTML = "";
       };
-
       detailBox.appendChild(saveBtn);
+
+      const spacer = document.createElement("div");
+      spacer.style.height = "12px";
+      detailBox.appendChild(spacer);
+
+      const info = document.createElement("div");
+      info.style.color = THEME.muted;
+      info.innerText = `Type: ${varDef.type} (type is locked)`;
+      detailBox.appendChild(info);
     }
 
-    function isDuplicateName(name, category, skipId) {
-      const arr = state.variables[category] || [];
-      return arr.some(v => v.name === name && v.id !== skipId);
-    }
-
-    function createVariableViaUi(category) {
-      const name = prompt("New variable name (no duplicates):");
-      if (!name) return;
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      if (isDuplicateName(trimmed, category)) {
-        alert("Duplicate name in this category. Choose a different name.");
-        return;
-      }
-      const id = makeNextSequentialId();
-      const varDef = { id: id, name: trimmed, type: category };
-      state.variables[category].push(varDef);
-
-      // register to workspace
-      try {
-        const ws2 = getMainWorkspaceSafe();
-        createWorkspaceVariable(ws2, varDef.name, varDef.type, varDef.id);
-      } catch (e) { console.warn(e); }
-
-      saveState();
-      renderCategories();
-      renderVariables();
-    }
-
+    // delete variable
     function deleteVariable(category, id) {
       const arr = state.variables[category] || [];
       const idx = arr.findIndex(x => x.id === id);
       if (idx >= 0) arr.splice(idx, 1);
+      // delete from workspace if possible
       try {
         const ws3 = getMainWorkspaceSafe();
         deleteWorkspaceVariable(ws3, id);
+        resyncWorkspaceVariableMap(ws3);
       } catch (e) {}
     }
 
-    // render helpers
-    function renderCategories() {
-      catList.innerHTML = "";
-      CATEGORIES.forEach((cat) => {
-        const b = document.createElement("button");
-        b.innerText = `${cat} (${(state.variables[cat]||[]).length})`;
-        b.style.textAlign = "left";
-        b.style.padding = "6px";
-        b.style.border = "none";
-        b.style.borderRadius = "4px";
-        b.style.background = "#141416";
-        b.style.color = "#ddd";
-        b.style.cursor = "pointer";
-        b.dataset.category = cat;
-        if (cat === currentCategory) {
-          b.style.background = "rgba(255,255,255,0.12)";
-          b.style.borderLeft = "3px solid #00eaff";
-        }
-        b.onclick = () => {
-          currentCategory = cat;
-          renderCategories();
-          renderVariables();
-        };
-        catList.appendChild(b);
-      });
-    }
+    // bottom close + click outside: both close and trigger resync (so EA manager sees variables)
+    const closeBottom = document.createElement("button");
+    closeBottom.innerText = "Close";
+    closeBottom.style.marginTop = "10px";
+    closeBottom.style.padding = "8px 12px";
+    closeBottom.style.border = "none";
+    closeBottom.style.borderRadius = "8px";
+    closeBottom.style.background = THEME.btnGray;
+    closeBottom.style.color = "#fff";
+    closeBottom.style.cursor = "pointer";
+    closeBottom.onmouseenter = () => closeBottom.style.background = THEME.btnGrayHover;
+    closeBottom.onmouseleave = () => closeBottom.style.background = THEME.btnGray;
+    closeBottom.onclick = () => {
+      // final resync to workspace + persist
+      try {
+        const ws3 = getMainWorkspaceSafe();
+        resyncWorkspaceVariableMap(ws3);
+      } catch (e) {}
+      removeModal();
+    };
+    modalEl.appendChild(closeBottom);
 
-    // click outside to close
+    // click outside closes and resyncs
     modalOverlay.addEventListener("click", (ev) => {
-      if (ev.target === modalOverlay) removeModal();
+      if (ev.target === modalOverlay) {
+        try {
+          const ws3 = getMainWorkspaceSafe();
+          resyncWorkspaceVariableMap(ws3);
+        } catch (e) {}
+        removeModal();
+      }
     });
 
     // initial render
     renderCategories();
     renderVariables();
-  }
-
-  function removeModal() {
-    if (modalOverlay) {
-      try { modalOverlay.remove(); } catch (e) {}
-      modalOverlay = null;
-    }
   }
 
   // Context menu registration (robust)
@@ -670,7 +742,7 @@
           id: "manageExtendedVariables",
           displayText: "Manage Variables",
           preconditionFn: () => "enabled",
-          callback: () => createModal(),
+          callback: () => openModal(),
           scopeType: (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
                       : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry) ? Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
                       : null,
@@ -680,11 +752,9 @@
         reg.register(item);
         return;
       }
-    } catch (e) {
-      console.warn(e);
-    }
+    } catch (e) { console.warn(e); }
 
-    // Fallback to DOM injection (force visible text color)
+    // fallback DOM injection
     (function domFallback() {
       document.addEventListener("contextmenu", () => {
         setTimeout(() => {
@@ -693,14 +763,15 @@
           if (menu.querySelector("[data-extvars]")) return;
           const el = document.createElement("div");
           el.setAttribute("data-extvars", "1");
-          el.style.padding = "6px 10px";
+          el.style.padding = "8px 12px";
           el.style.cursor = "pointer";
-          el.style.color = "#ffffff"; // force visible
+          el.style.color = THEME.text;
           el.style.background = "transparent";
+          el.style.borderTop = "1px solid rgba(255,255,255,0.03)";
           el.textContent = "Manage Variables";
           el.onclick = () => {
-            createModal();
-            try { menu.style.display = "none"; } catch(e){}
+            openModal();
+            try { menu.style.display = "none"; } catch (e) {}
           };
           menu.appendChild(el);
         }, 40);
@@ -708,329 +779,17 @@
     })();
   }
 
-  function createModal() {
-    // ensure latest state loaded
-    loadState();
-    // register variables in workspace
-    const ws = getMainWorkspaceSafe();
-    if (ws) registerAllVariablesInWorkspace(ws);
-    // open modal
-    createModalUI();
-  }
+  // Expose helper
+  if (plugin) plugin.openManager = openModal;
 
-  // split createModal into UI builder to avoid recursive naming collisions
-  function createModalUI() {
-    // Reuse createModal code above by calling it directly (we separated to prevent name conflict)
-    // But to keep code straightforward, just call createModalA which is the modal builder
-    createModalA();
-  }
-
-  // To avoid function name collision, createModalA is the large UI builder used above.
-  // We'll define createModalA here by referencing earlier defined createModal function logic.
-  // Since the big modal code is above (createModal), we rename that original to createModalA in-place:
-  // (We've already defined createModal earlier that calls createModalUI; now createModalA must be assigned to the UI builder function.)
-  // For clarity and to avoid duplicating, we will reuse the earlier UI builder by moving its definition here.
-  // However to keep things simple and robust, I'll inline a small stable UI builder that matches the earlier behavior.
-
-  // INLINE stable UI builder (this will replicate the previous modal UI but avoid naming collisions)
-  function createModalA() {
-    // Use the same modal code as createModal earlier did, but simpler call chain
-    // Implementation: reuse the existing createModal function body by inlining the UI builder logic now.
-    // For brevity we call the earlier defined createModal (which displays the UI) — ensure we don't recurse infinitely.
-    // If the earlier createModal is still the UI builder, calling it would recurse; to avoid that, we simply duplicate minimal call:
-    // Instead, to be explicit, call the earlier defined createModal function body was assigned above; but to avoid confusion, we'll call the UI creation code directly:
-    // (Simplify: open the modal using the working UI function defined previously as createModal — but that one has been used earlier to assign modalOverlay var.)
-    // To resolve this without confusion, we will call a small wrapper that builds the UI in a single consistent path.
-    // Because of the complexity, the simplest approach is to call the earlier defined function which constructs the modalOverlay and UI:
-    // However to avoid naming confusion, the code above already implemented full UI in createModal (the first one). We'll just call that function's inner logic by creating modalOverlay via the previously defined createModal implementation.
-    // For practical effect, call the function body by invoking createModalOriginal if present. But to keep this file self-contained and working, I'll simply call the top-level createModal function defined earlier that builds the UI.
-    // Since createModal was earlier defined (UI builder), call it now:
-    try {
-      // createModal was defined earlier (UI builder). If it's defined, call it.
-      // To prevent infinite recursion, ensure modalOverlay is null.
-      if (!modalOverlay) {
-        // call the originally defined UI builder (the big function above)
-        // The original UI builder was assigned to createModal earlier; calling it will build the UI.
-        // So call it:
-        (function originalModalBuilder(){ 
-          // Reuse the modal building code: call the first createModal implementation logic using a simple wrapper.
-          // Because we already have a createModal defined above, but it was re-used here, call the block that builds UI directly by referencing its logic via IIFE.
-          // For simplicity, we will just invoke the minimal UI: open a simple modal that lists categories and variables.
-          // (This block is intentionally shorter and robust.)
-          const overlay = document.createElement("div");
-          overlay.style.position = "fixed";
-          overlay.style.top = "0";
-          overlay.style.left = "0";
-          overlay.style.width = "100%";
-          overlay.style.height = "100%";
-          overlay.style.background = "rgba(0,0,0,0.6)";
-          overlay.style.zIndex = "999999";
-          overlay.style.display = "flex";
-          overlay.style.alignItems = "center";
-          overlay.style.justifyContent = "center";
-
-          const modalEl = document.createElement("div");
-          modalEl.style.width = "min(1100px, 92vw)";
-          modalEl.style.height = "min(700px, 86vh)";
-          modalEl.style.background = "#0f0f10";
-          modalEl.style.borderRadius = "8px";
-          modalEl.style.boxShadow = "0 8px 40px rgba(0,0,0,0.8)";
-          modalEl.style.color = "#fff";
-          modalEl.style.padding = "14px";
-          modalEl.style.overflow = "hidden";
-          modalEl.style.display = "flex";
-          modalEl.style.flexDirection = "column";
-          modalEl.style.fontFamily = "Arial, sans-serif";
-
-          overlay.appendChild(modalEl);
-          document.body.appendChild(overlay);
-          modalOverlay = overlay;
-
-          // simple header
-          const header = document.createElement("div");
-          header.style.display = "flex";
-          header.style.alignItems = "center";
-          header.style.justifyContent = "space-between";
-          header.style.marginBottom = "8px";
-          const title = document.createElement("div");
-          title.innerText = "Extended Variable Manager";
-          title.style.fontSize = "18px";
-          title.style.fontWeight = "700";
-          header.appendChild(title);
-          modalEl.appendChild(header);
-
-          // container
-          const container = document.createElement("div");
-          container.style.display = "flex";
-          container.style.flex = "1 1 auto";
-          container.style.gap = "12px";
-          modalEl.appendChild(container);
-
-          const leftCol = document.createElement("div");
-          leftCol.style.width = "260px";
-          leftCol.style.background = "#121213";
-          leftCol.style.padding = "8px";
-          leftCol.style.borderRadius = "6px";
-          leftCol.style.overflowY = "auto";
-
-          const mainCol = document.createElement("div");
-          mainCol.style.flex = "1";
-          mainCol.style.background = "#0b0b0c";
-          mainCol.style.borderRadius = "6px";
-          mainCol.style.padding = "8px";
-          mainCol.style.overflowY = "auto";
-
-          const rightCol = document.createElement("div");
-          rightCol.style.width = "300px";
-          rightCol.style.background = "#111112";
-          rightCol.style.borderRadius = "6px";
-          rightCol.style.padding = "8px";
-
-          container.appendChild(leftCol);
-          container.appendChild(mainCol);
-          container.appendChild(rightCol);
-
-          // build category list
-          const catList = document.createElement("div");
-          catList.style.display = "flex";
-          catList.style.flexDirection = "column";
-          catList.style.gap = "6px";
-          leftCol.appendChild(catList);
-
-          function renderCategoriesSimple() {
-            catList.innerHTML = "";
-            for (const cat of CATEGORIES) {
-              const b = document.createElement("button");
-              b.innerText = `${cat} (${(state.variables[cat]||[]).length})`;
-              b.style.textAlign = "left";
-              b.style.padding = "6px";
-              b.style.border = "none";
-              b.style.borderRadius = "4px";
-              b.style.background = "#141416";
-              b.style.color = "#ddd";
-              b.onclick = () => {
-                // render variables for this cat
-                renderVariablesSimple(cat, mainCol);
-              };
-              catList.appendChild(b);
-            }
-          }
-
-          function renderVariablesSimple(category, target) {
-            target.innerHTML = "";
-            const header = document.createElement("div");
-            header.style.display = "flex";
-            header.style.justifyContent = "space-between";
-            header.style.marginBottom = "8px";
-            const h = document.createElement("div");
-            h.innerHTML = `<strong>${category} Variables</strong>`;
-            header.appendChild(h);
-            const addBtn = document.createElement("button");
-            addBtn.className = "blueBtn";
-            addBtn.textContent = "Add";
-            addBtn.style.padding = "6px";
-            addBtn.onclick = () => {
-              const nm = prompt("Variable name:");
-              if (!nm) return;
-              const trimmed = nm.trim();
-              if (!trimmed) return;
-              // duplicates check
-              if ((state.variables[category]||[]).some(v=>v.name.toLowerCase()===trimmed.toLowerCase())) { alert("Duplicate"); return; }
-              const id = makeNextSequentialId();
-              state.variables[category].push({ id, name: trimmed, type: category });
-              try { saveState(); } catch(e){}
-              renderVariablesSimple(category, target);
-            };
-            header.appendChild(addBtn);
-            target.appendChild(header);
-
-            const arr = state.variables[category] || [];
-            for (const v of arr) {
-              const row = document.createElement("div");
-              row.style.display = "flex";
-              row.style.justifyContent = "space-between";
-              row.style.padding = "6px";
-              row.style.background = "#0d0d0e";
-              row.style.marginBottom = "6px";
-              row.style.borderRadius = "4px";
-
-              const left = document.createElement("div");
-              left.style.display = "flex";
-              left.style.flexDirection = "column";
-              const name = document.createElement("div");
-              name.innerText = v.name;
-              name.style.fontWeight = "600";
-              const usage = document.createElement("div");
-              usage.style.fontSize = "12px";
-              usage.style.color = "#9aa";
-              const wsx = getMainWorkspaceSafe();
-              const usedCount = wsx ? countVariableUsage(wsx, v) : 0;
-              usage.innerText = `In use: (${usedCount})`;
-              left.appendChild(name);
-              left.appendChild(usage);
-
-              const right = document.createElement("div");
-              const edit = document.createElement("button");
-              edit.className = "blueBtn"; edit.textContent = "Edit";
-              edit.onclick = () => {
-                const newName = prompt("Edit name:", v.name);
-                if (!newName) return;
-                const trimmed = newName.trim();
-                if (!trimmed) return;
-                if ((state.variables[category]||[]).some(x=>x.name.toLowerCase()===trimmed.toLowerCase() && x.id!==v.id)) { alert("Duplicate"); return; }
-                v.name = trimmed;
-                saveState();
-                renderVariablesSimple(category, target);
-              };
-              const del = document.createElement("button");
-              del.className = "redBtn"; del.textContent = "Delete";
-              del.onclick = () => {
-                if (!confirm(`Delete ${v.name}?`)) return;
-                state.variables[category] = (state.variables[category]||[]).filter(x=>x.id!==v.id);
-                saveState();
-                renderVariablesSimple(category, target);
-              };
-              right.appendChild(edit);
-              right.appendChild(del);
-
-              row.appendChild(left);
-              row.appendChild(right);
-              target.appendChild(row);
-            }
-
-            if (arr.length===0) {
-              const empt = document.createElement("div");
-              empt.style.color="#888";
-              empt.innerText="(no variables)";
-              target.appendChild(empt);
-            }
-          }
-
-          // close button bottom-right
-          const close = document.createElement("button");
-          close.textContent = "Close";
-          close.style.position = "absolute";
-          close.style.right = "12px";
-          close.style.bottom = "12px";
-          close.style.padding = "8px 12px";
-          close.style.border = "none";
-          close.style.borderRadius = "6px";
-          close.style.background = "#2b2b2b";
-          close.style.color = "#fff";
-          close.onclick = () => { try{ overlay.remove(); modalOverlay=null; }catch(e){} };
-
-          modalEl.appendChild(close);
-
-          // click outside to close
-          overlay.addEventListener("click", (ev) => { if (ev.target === overlay) { try{ overlay.remove(); modalOverlay=null; }catch(e){} } });
-
-          renderCategoriesSimple();
-        })();
-      }
-    } catch (e) {
-      console.warn("[ExtVars] createModalA error", e);
-    }
-  }
-
-  // Register context menu
-  function registerContextMenuItem() {
-    try {
-      const reg = (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.registry
-                : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry) ? Blockly.ContextMenuRegistry.registry
-                : null;
-      if (reg && typeof reg.register === "function") {
-        const item = {
-          id: "manageExtendedVariables",
-          displayText: "Manage Variables",
-          preconditionFn: () => "enabled",
-          callback: () => createModal(),
-          scopeType: (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
-                      : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry) ? Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
-                      : null,
-          weight: 98
-        };
-        try { if (reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); } catch (e) {}
-        reg.register(item);
-        return;
-      }
-    } catch (e) {
-      console.warn(e);
-    }
-
-    // fallback DOM
-    (function domFallback(){
-      document.addEventListener("contextmenu", () => {
-        setTimeout(() => {
-          const menu = document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
-          if (!menu) return;
-          if (menu.querySelector("[data-extvars]")) return;
-          const el = document.createElement("div");
-          el.setAttribute("data-extvars", "1");
-          el.style.padding = "6px 10px";
-          el.style.cursor = "pointer";
-          el.style.color = "#ffffff"; // ensure visible
-          el.style.background = "transparent";
-          el.textContent = "Manage Variables";
-          el.onclick = () => {
-            createModal();
-            try { menu.style.display = "none"; } catch(e) {}
-          };
-          menu.appendChild(el);
-        }, 40);
-      });
-    })();
-  }
-
-  // Initialization
+  // Initialize
   function initialize() {
     loadState();
     ensureStateCategories();
     const ws = getMainWorkspaceSafe();
     if (ws) registerAllVariablesInWorkspace(ws);
     registerContextMenu();
-    // expose open function
-    if (plugin) plugin.openManager = createModal;
-    console.info("[ExtVars] initialized");
+    console.info("[ExtVars] initialized (dark theme, BF6 accent)");
   }
 
   // run initialize shortly after load
