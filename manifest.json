@@ -1,7 +1,7 @@
 {
   "id": "bf-portal-unlimited-variables-plugin",
   "name": "BF6 Copy/Paste",
-  "version": "0.1.4",
+  "version": "0.0.1",
   "description": "Adds a custom variable manager for unlimited variables",
   "main": "index.js",
   "author": "andy6170"
