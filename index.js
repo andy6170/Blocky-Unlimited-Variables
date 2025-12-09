@@ -138,39 +138,39 @@
 
   // ---------- usage counter by name (corrected) ----------
 function countVariableUsage(ws, varDef) {
-  if (!ws || !varDef) return 0;
-  const name = varDef.name;
+  if (!ws || !varDef || !varDef.id) return 0;
+  const targetId = varDef.id;
   let count = 0;
-  try {
-    const blocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-    blocks.forEach(block => {
-      if (!block) return;
 
-      // check getVars (array of variable names)
-      if (block.getVars && typeof block.getVars === "function") {
-        const vars = block.getVars();
-        if (Array.isArray(vars)) count += vars.filter(v => v === name).length;
-      }
+  function traverseBlock(block) {
+    if (!block) return;
 
-      // check getVariable (single variable name)
-      if (block.getVariable && typeof block.getVariable === "function") {
-        if (block.getVariable() === name) count++;
-      }
+    // Check if this block references the variable
+    if (block.fields && block.fields.VAR && block.fields.VAR.id === targetId) {
+      count++;
+    }
 
-      // also check inputs for fields that may reference variables
-      if (block.inputList && Array.isArray(block.inputList)) {
-        block.inputList.forEach(input => {
-          if (!input || !input.fieldRow) return;
-          input.fieldRow.forEach(field => {
-            if (!field) return;
-            if (field.getValue && field.getValue() === name) count++;
-          });
-        });
-      }
-    });
-  } catch (e) { return 0; }
+    // Recursively traverse inputs
+    if (block.inputList && Array.isArray(block.inputList)) {
+      block.inputList.forEach(input => {
+        if (input.connection && input.connection.targetBlock()) {
+          traverseBlock(input.connection.targetBlock());
+        }
+      });
+    }
+
+    // Traverse next block in stack
+    if (block.nextConnection && block.nextConnection.targetBlock()) {
+      traverseBlock(block.nextConnection.targetBlock());
+    }
+  }
+
+  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+  allBlocks.forEach(traverseBlock);
+
   return count;
 }
+
 
 
   // ---------- inject CSS ----------
