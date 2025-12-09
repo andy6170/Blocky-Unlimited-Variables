@@ -134,6 +134,24 @@
   function countVariableUsage(ws, varDef) {
   if (!ws || !varDef) return 0;
   const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+    
+    console.log("===== BLOCK STRUCTURE DUMP =====");
+for (const block of allBlocks) {
+  try {
+    console.log({
+      id: block.id,
+      type: block.type,
+      fields: block.fields,
+      inputList: block.inputList,
+      inputs: block.inputs,
+      toString: block.toString?.()
+    });
+  } catch(e) {
+    console.warn("Error inspecting block:", e);
+  }
+}
+console.log("===== END BLOCK DUMP =====");
+
   const targetId = varDef.id;
   const targetName = varDef.name;
   let count = 0;
