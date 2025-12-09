@@ -1,6 +1,8 @@
-// BF6 Extended Variable Manager - Final (full, project-scoped, workspace-sync)
+// BF6 Extended Variable Manager - final corrected (live workspace-only)
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
+
+  // defensive plugin handle
   let plugin = null;
   try {
     if (typeof BF2042Portal !== "undefined" && BF2042Portal.Plugins && typeof BF2042Portal.Plugins.getPlugin === "function") {
@@ -8,87 +10,16 @@
     } else {
       plugin = { id: PLUGIN_ID };
     }
-  } catch (e) {
-    plugin = { id: PLUGIN_ID };
-  }
+  } catch (e) { plugin = { id: PLUGIN_ID }; }
 
-  // ----- categories
+  // categories (kept from your model)
   const CATEGORIES = [
     "Global","AreaTrigger","CapturePoint","EmplacementSpawner","HQ","InteractPoint","LootSpawner","MCOM",
     "Player","RingOfFire","ScreenEffect","Sector","SFX","SpatialObject","Spawner","SpawnPoint","Team",
     "Vehicle","VehicleSpawner","VFX","VO","WaypointPath","WorldIcon"
   ];
 
-  // ----- state
-  let state = { nextIdCounter: 1, variables: {} };
-  function ensureStateCategories() {
-    for (const c of CATEGORIES) if (!Array.isArray(state.variables[c])) state.variables[c] = [];
-  }
-
-  // ----- storage key (project-scoped)
-  function getExperienceId() {
-    try {
-      if (typeof BF2042Portal !== "undefined" && BF2042Portal.currentExperienceId) return String(BF2042Portal.currentExperienceId);
-    } catch (e) {}
-    // fallback to pathname (last segment) or "default"
-    try {
-      const p = location.pathname || "";
-      const seg = p.split("/").filter(Boolean).slice(-1)[0];
-      if (seg) return seg;
-    } catch (e) {}
-    return "default";
-  }
-  function getStorageKey() {
-    const exp = getExperienceId();
-    return PLUGIN_ID + "-state-" + exp;
-  }
-
-  // ----- persistence
-  function saveState() {
-    try {
-      const key = getStorageKey();
-      const payload = JSON.stringify(state);
-      if (typeof BF2042Portal !== "undefined" && BF2042Portal.Shared && typeof BF2042Portal.Shared.saveToLocalStorage === "function") {
-        BF2042Portal.Shared.saveToLocalStorage(key, state);
-      } else {
-        localStorage.setItem(key, payload);
-      }
-    } catch (e) { console.warn("[ExtVars] saveState failed:", e); }
-  }
-  function loadState() {
-    try {
-      const key = getStorageKey();
-      let loaded = null;
-      if (typeof BF2042Portal !== "undefined" && BF2042Portal.Shared && typeof BF2042Portal.Shared.loadFromLocalStorage === "function") {
-        loaded = BF2042Portal.Shared.loadFromLocalStorage(key);
-      } else {
-        const raw = localStorage.getItem(key);
-        if (raw) loaded = JSON.parse(raw);
-      }
-      if (loaded && typeof loaded === "object") {
-        // merge so we don't lose fields
-        state = Object.assign({}, state, loaded);
-        if (!state.variables) state.variables = {};
-      }
-    } catch (e) { console.warn("[ExtVars] loadState failed:", e); }
-    ensureStateCategories();
-
-    // set nextIdCounter above any EV_ in state
-    try {
-      let max = state.nextIdCounter || 1;
-      for (const cat of CATEGORIES) {
-        for (const v of state.variables[cat] || []) {
-          if (v && typeof v.id === "string" && v.id.startsWith("EV_")) {
-            const n = parseInt(v.id.slice(3), 10);
-            if (!isNaN(n) && n >= max) max = n + 1;
-          }
-        }
-      }
-      state.nextIdCounter = max;
-    } catch (e) {}
-  }
-
-  // ----- workspace access helpers
+  // ---------- workspace helpers (defensive) ----------
   function getMainWorkspaceSafe() {
     try {
       if (typeof _Blockly !== "undefined" && _Blockly && typeof _Blockly.getMainWorkspace === "function") return _Blockly.getMainWorkspace();
@@ -99,6 +30,7 @@
     } catch (e) {}
     return null;
   }
+
   function workspaceGetVariableMap(ws) {
     try {
       if (!ws) return null;
@@ -107,26 +39,31 @@
     } catch (e) {}
     return null;
   }
-  function workspaceHasVariableWithId(ws, id) {
+
+  // return array of workspace variable objects (best-effort)
+  function workspaceGetVariables(ws) {
     try {
       const map = workspaceGetVariableMap(ws);
-      if (!map) return false;
-      if (typeof map.getVariableById === "function") return !!map.getVariableById(id);
-      if (typeof map.getVariable === "function") return !!map.getVariable(id);
-      if (map.getVariables) return map.getVariables().some(v => v.id === id);
+      if (!map) return [];
+      if (typeof map.getVariables === "function") return map.getVariables();
+      if (typeof map.getAllVariables === "function") return map.getAllVariables();
+      // fallback: map may be an object with internal arrays
+      if (Array.isArray(map.variables)) return map.variables;
     } catch (e) {}
-    return false;
+    return [];
   }
-  function workspaceHasVariableWithName(ws, name) {
-    try {
-      const map = workspaceGetVariableMap(ws);
-      if (!map) return false;
-      if (typeof map.getVariableByName === "function") return !!map.getVariableByName(name);
-      if (typeof map.getVariable === "function") return !!map.getVariable(name);
-      if (map.getVariables) return map.getVariables().some(v => v.name === name);
-    } catch (e) {}
-    return false;
+
+  function getVarId(v) {
+    try { if (!v) return null; if (typeof v.getId === "function") return v.getId(); if (v.id) return v.id; return v.getId && v.getId(); } catch (e) { return null; }
   }
+  function getVarName(v) {
+    try { if (!v) return null; return v.name !== undefined ? v.name : (v.getName ? v.getName() : null); } catch (e) { return null; }
+  }
+  function getVarType(v) {
+    try { if (!v) return "Global"; return v.type !== undefined ? v.type : (v.getType ? v.getType() : "Global"); } catch (e) { return "Global"; }
+  }
+
+  // create variable in workspace; attempt to preserve id when possible
   function createWorkspaceVariable(ws, name, type, id) {
     try {
       const map = workspaceGetVariableMap(ws);
@@ -134,7 +71,7 @@
         try { return map.createVariable(name, type || "", id); } catch (e) { try { return map.createVariable(name, type || "", undefined); } catch(e2){} }
       }
       if (ws && typeof ws.createVariable === "function") {
-        try { return ws.createVariable(name, type || "", id); } catch(e){ try { return ws.createVariable(name, type || "", undefined); } catch(e2){} }
+        try { return ws.createVariable(name, type || "", id); } catch (e) { try { return ws.createVariable(name, type || "", undefined); } catch(e2){} }
       }
       if (typeof Blockly !== "undefined" && Blockly.Variables && typeof Blockly.Variables.createVariable === "function") {
         try { return Blockly.Variables.createVariable(ws, name, type || "", id); } catch (e) {}
@@ -142,144 +79,99 @@
     } catch (e) { console.warn("[ExtVars] createWorkspaceVariable error:", e); }
     return null;
   }
+
+  // delete var by id or name
   function deleteWorkspaceVariable(ws, idOrName) {
     try {
       const map = workspaceGetVariableMap(ws);
       if (!map) return false;
-      if (typeof map.deleteVariable === "function") { try { map.deleteVariable(idOrName); return true; } catch (e) {} }
-      if (typeof map.removeVariable === "function") { try { map.removeVariable(idOrName); return true; } catch (e) {} }
-      if (map.getVariables) {
+      if (typeof map.deleteVariableById === "function") {
+        try { map.deleteVariableById(idOrName); return true; } catch (e) {}
+      }
+      if (typeof map.deleteVariable === "function") {
+        try { map.deleteVariable(idOrName); return true; } catch (e) {}
+      }
+      if (typeof map.removeVariable === "function") {
+        try { map.removeVariable(idOrName); return true; } catch (e) {}
+      }
+      if (map.getVariables && typeof map.getVariables === "function") {
         const vs = map.getVariables();
-        const idx = vs.findIndex(v => v.id === idOrName || v.name === idOrName);
-        if (idx >= 0 && Array.isArray(vs)) { try { vs.splice(idx, 1); return true; } catch(e) {} }
+        const idx = vs.findIndex(v => getVarId(v) === idOrName || getVarName(v) === idOrName);
+        if (idx >= 0 && Array.isArray(vs)) {
+          try { vs.splice(idx, 1); return true; } catch (e) {}
+        }
       }
     } catch (e) { console.warn("[ExtVars] deleteWorkspaceVariable error:", e); }
     return false;
   }
 
-  // ----- serialized traversal / usage counting
-  function traverseSerializedBlocks(node, cb) {
-    if (!node) return;
-    cb(node);
-    if (node.inputs && typeof node.inputs === "object") {
-      for (const input of Object.values(node.inputs)) {
-        if (input && input.block) traverseSerializedBlocks(input.block, cb);
-        if (input && input.shadow) traverseSerializedBlocks(input.shadow, cb);
-      }
-    }
-    if (node.next && node.next.block) traverseSerializedBlocks(node.next.block, cb);
-  }
-  function countVariableUsage(ws, varDef) {
-    let count = 0;
+  function renameWorkspaceVariable(ws, varObj, newName) {
     try {
-      if (!ws) return 0;
-      const allBlocks = ws.getAllBlocks ? ws.getAllBlocks(false) : [];
-      for (const blk of allBlocks) {
+      const map = workspaceGetVariableMap(ws);
+      if (!map) return false;
+      // try getVariableById
+      let found = null;
+      const id = getVarId(varObj);
+      if (id && typeof map.getVariableById === "function") {
+        try { found = map.getVariableById(id); } catch (e) { found = null; }
+      }
+      if (!found && typeof map.getVariable === "function") {
+        try { found = map.getVariable(id) || map.getVariable(getVarName(varObj)); } catch (e) { found = null; }
+      }
+      if (found) {
+        try { found.name = newName; return true; } catch (e) {}
+      }
+      // last resort: mutate varObj directly
+      try { if (varObj && varObj.name !== undefined) { varObj.name = newName; return true; } } catch (e) {}
+    } catch (e) { console.warn("[ExtVars] renameWorkspaceVariable error:", e); }
+    return false;
+  }
+
+  // ---------- ID generation that scans workspace for EV_### collisions ----------
+  function makeNextSequentialIdFromWorkspace() {
+    try {
+      const ws = getMainWorkspaceSafe();
+      const vars = workspaceGetVariables(ws);
+      let max = 0;
+      for (const v of vars) {
+        const id = getVarId(v) || (v && v.id) || null;
+        if (typeof id === "string" && id.startsWith("EV_")) {
+          const n = parseInt(id.slice(3), 10);
+          if (!isNaN(n) && n > max) max = n;
+        }
+      }
+      const next = max + 1;
+      return "EV_" + String(next).padStart(4, "0");
+    } catch (e) { return "EV_0001"; }
+  }
+
+  // ---------- build a LIVE registry of workspace vars grouped by category ----------
+  function getLiveRegistry() {
+    const ws = getMainWorkspaceSafe();
+    const live = {};
+    for (const c of CATEGORIES) live[c] = [];
+    try {
+      const vars = workspaceGetVariables(ws);
+      for (const v of vars) {
         try {
-          let serial = null;
-          if (typeof _Blockly !== "undefined" && _Blockly.serialization && _Blockly.serialization.blocks && typeof _Blockly.serialization.blocks.save === "function") {
-            serial = _Blockly.serialization.blocks.save(blk);
-          } else if (typeof Blockly !== "undefined" && Blockly.serialization && Blockly.serialization.blocks && typeof Blockly.serialization.blocks.save === "function") {
-            serial = Blockly.serialization.blocks.save(blk);
-          } else {
-            continue;
-          }
-          traverseSerializedBlocks(serial, (node) => {
-            if (!node || !node.fields) return;
-            const vf = node.fields.VAR;
-            if (!vf) return;
-            if (typeof vf === "object") {
-              if (vf.id && varDef.id && vf.id === varDef.id) count++;
-              else if (vf.name && vf.name === varDef.name && (vf.type || "") === (varDef.type || "")) count++;
-            } else if (typeof vf === "string") {
-              if (vf === varDef.name) count++;
-            }
-          });
+          const id = getVarId(v) || (v && v.id) || (v && v.getId && v.getId());
+          const name = getVarName(v) || (v && v.name);
+          const type = getVarType(v) || "Global";
+          const cat = (type && typeof type === "string") ? type : "Global";
+          if (!live[cat]) live[cat] = [];
+          live[cat].push({ id: id || null, name: name || String(id || ""), type: type || cat, _raw: v });
         } catch (e) {}
       }
-    } catch (e) { console.warn("[ExtVars] usage count error:", e); }
-    return count;
+    } catch (e) {}
+    // ensure categories exist even if empty
+    for (const c of CATEGORIES) if (!live[c]) live[c] = [];
+    return live;
   }
 
-  // ----- register/resync helpers
-  function registerAllVariablesInWorkspace(ws) {
-    try {
-      for (const cat of CATEGORIES) {
-        for (const v of state.variables[cat] || []) {
-          if (!workspaceHasVariableWithId(ws, v.id) && !workspaceHasVariableWithName(ws, v.name)) {
-            try { createWorkspaceVariable(ws, v.name, v.type || cat, v.id); } catch (e) {}
-          }
-        }
-      }
-      try { document.dispatchEvent(new Event("variables_refreshed")); } catch (e) {}
-    } catch (e) { console.warn("[ExtVars] registerAllVariablesInWorkspace error:", e); }
-  }
-  function resyncWorkspaceVariableMap(ws) {
-    try {
-      if (!ws) return;
-      const map = workspaceGetVariableMap(ws);
-      if (!map) return;
-      try {
-        if (typeof map.getVariables === "function") {
-          const existing = map.getVariables();
-          for (const ex of Array.from(existing || [])) {
-            try {
-              if (typeof map.deleteVariableById === "function" && ex.getId) {
-                try { map.deleteVariableById(ex.getId()); } catch (e) {}
-              } else if (typeof map.deleteVariable === "function") {
-                try { map.deleteVariable(ex); } catch (e) {}
-              }
-            } catch (e) {}
-          }
-        }
-      } catch (e) {}
-      for (const cat of CATEGORIES) {
-        for (const v of state.variables[cat] || []) {
-          try { createWorkspaceVariable(ws, v.name, v.type || cat, v.id); } catch (e) {}
-        }
-      }
-      try { if (ws.refreshToolboxSelection) ws.refreshToolboxSelection(); } catch (e) {}
-      try { if (ws.toolbox_) ws.toolbox_.refreshSelection && ws.toolbox_.refreshSelection(); } catch (e) {}
-      try { document.dispatchEvent(new Event("variables_refreshed")); } catch (e) {}
-    } catch (e) { console.warn("[ExtVars] resyncWorkspaceVariableMap error:", e); }
-  }
-
-  // ----- ID allocation
-  function makeNextSequentialId() {
-    if (!state.nextIdCounter || typeof state.nextIdCounter !== "number") state.nextIdCounter = 1;
-    const id = "EV_" + String(state.nextIdCounter).padStart(4, "0");
-    state.nextIdCounter += 1;
-    return id;
-  }
-
-  // ----- import workspace variables into plugin state (ensures any external creation is visible)
-  function syncWorkspaceIntoState() {
-    const ws = getMainWorkspaceSafe();
-    if (!ws) return;
-    const map = workspaceGetVariableMap(ws);
-    if (!map || typeof map.getVariables !== "function") return;
-    try {
-      const workspaceVars = map.getVariables();
-      let changed = false;
-      for (const wv of workspaceVars) {
-        const category = (wv.type && typeof wv.type === "string") ? wv.type : "Global";
-        if (!state.variables[category]) state.variables[category] = [];
-        const exists = state.variables[category].some(v => v.id === wv.id || v.name === wv.name);
-        if (!exists) {
-          state.variables[category].push({ id: wv.id || makeNextSequentialId(), name: wv.name, type: wv.type || category });
-          changed = true;
-        }
-      }
-      if (changed) saveState();
-    } catch (e) {
-      console.warn("[ExtVars] syncWorkspaceIntoState failed:", e);
-    }
-  }
-
-  // ----- UI CSS injection
+  // ---------- UI CSS ----------
   (function injectStyle(){
-    const s = document.createElement("style");
-    s.textContent = `
+    const style = document.createElement("style");
+    style.textContent = `
       .ev-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:999999}
       .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#0f0f10;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
       .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
@@ -300,117 +192,50 @@
       .ev-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
       .ev-title{font-weight:700;font-size:16px}
     `;
-    document.head.appendChild(s);
+    document.head.appendChild(style);
   })();
 
-  // ----- Main UI modal builder (full featured)
+  // ---------- modal UI (uses live registry only) ----------
   let modalOverlay = null;
-  function removeModal() {
-    if (modalOverlay) {
-      try { modalOverlay.remove(); } catch (e) {}
-      modalOverlay = null;
-    }
-  }
+  function removeModal() { if (modalOverlay) { try { modalOverlay.remove(); } catch(e) {} modalOverlay = null; } }
 
   function openModal() {
-    loadState();
-    ensureStateCategories();
+    // build fresh live registry from workspace each time
+    const live = getLiveRegistry();
 
-    // import any variables from workspace so everything created by other methods shows
-    try { syncWorkspaceIntoState(); } catch (e) {}
-
-    // attempt to register all stored variables in workspace so they become available
-    try { const wsPre = getMainWorkspaceSafe(); if (wsPre) registerAllVariablesInWorkspace(wsPre); } catch (e) {}
-
+    // prepare DOM
     removeModal();
-
     modalOverlay = document.createElement("div");
     modalOverlay.className = "ev-overlay";
-
     const modal = document.createElement("div");
     modal.className = "ev-modal";
     modalOverlay.appendChild(modal);
 
     // header
-    const top = document.createElement("div");
-    top.className = "ev-top";
-    const title = document.createElement("div");
-    title.className = "ev-title";
-    title.innerText = "Extended Variable Manager";
+    const top = document.createElement("div"); top.className = "ev-top";
+    const title = document.createElement("div"); title.className = "ev-title"; title.innerText = "Extended Variable Manager";
     top.appendChild(title);
 
     const topActions = document.createElement("div");
-    // import/export
-    const importBtn = document.createElement("button");
-    importBtn.className = "ev-btn ev-edit";
-    importBtn.style.marginRight = "6px";
-    importBtn.innerText = "Import";
-    importBtn.onclick = () => {
-      try {
-        const raw = prompt("Paste variables JSON (array of {id,name,type})");
-        if (!raw) return;
-        const arr = JSON.parse(raw);
-        if (!Array.isArray(arr)) throw new Error("Invalid JSON (not array)");
-        for (const it of arr) {
-          const cat = it.type || "Global";
-          if (!state.variables[cat]) state.variables[cat]=[];
-          if (!state.variables[cat].some(v=>v.id===it.id)) state.variables[cat].push({id:it.id,name:it.name,type:cat});
-        }
-        saveState();
-        try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch(e) {}
-        rebuildCategories(); rebuildList();
-        alert("Imported.");
-      } catch (e) { alert("Import failed: "+e.message); }
-    };
-    topActions.appendChild(importBtn);
-
-    const exportBtn = document.createElement("button");
-    exportBtn.className = "ev-btn ev-edit";
-    exportBtn.innerText = "Export";
-    exportBtn.onclick = () => {
-      try {
-        // flatten variables to an array
-        const out = [];
-        for (const c of CATEGORIES) for (const v of state.variables[c] || []) out.push({id:v.id,name:v.name,type:v.type});
-        const txt = JSON.stringify(out, null, 2);
-        prompt("Copy the JSON below:", txt);
-      } catch (e) { console.warn(e); }
-    };
-    topActions.appendChild(exportBtn);
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "ev-btn ev-del";
-    closeBtn.innerText = "Close";
-    closeBtn.onclick = () => { try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch(e) {} removeModal(); };
+    const closeBtn = document.createElement("button"); closeBtn.className = "ev-btn ev-del"; closeBtn.innerText = "Close";
+    closeBtn.onclick = () => { removeModal(); };
     topActions.appendChild(closeBtn);
-
     top.appendChild(topActions);
     modal.appendChild(top);
 
-    const content = document.createElement("div");
-    content.className = "ev-content";
+    const content = document.createElement("div"); content.className = "ev-content";
     modal.appendChild(content);
 
-    // left categories
-    const left = document.createElement("div");
-    left.className = "ev-cats";
-    content.appendChild(left);
+    // left / center / right
+    const left = document.createElement("div"); left.className = "ev-cats";
+    const center = document.createElement("div"); center.className = "ev-list";
+    const right = document.createElement("div"); right.className = "ev-details"; right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
 
-    // center list
-    const center = document.createElement("div");
-    center.className = "ev-list";
-    content.appendChild(center);
-
-    // right details
-    const right = document.createElement("div");
-    right.className = "ev-details";
-    right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-    content.appendChild(right);
+    content.appendChild(left); content.appendChild(center); content.appendChild(right);
 
     let currentCategory = CATEGORIES[0];
 
-    // helpers for UI rebuild
-    function getCount(cat) { return (state.variables[cat]||[]).length; }
+    function getCount(cat) { return (live[cat] || []).length; }
 
     function rebuildCategories() {
       left.innerHTML = "";
@@ -419,17 +244,16 @@
         el.className = "ev-cat";
         if (cat === currentCategory) el.classList.add("selected");
         el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
-        el.onclick = () => {
-          currentCategory = cat;
-          rebuildCategories();
-          rebuildList();
-          right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-        };
+        el.onclick = () => { currentCategory = cat; rebuildCategories(); rebuildList(); right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
         left.appendChild(el);
       }
     }
 
     function rebuildList() {
+      // re-read live registry fresh each render to pick up external changes
+      const fresh = getLiveRegistry();
+      Object.assign(live, fresh);
+
       center.innerHTML = "";
       const header = document.createElement("div");
       header.style.display = "flex";
@@ -443,84 +267,75 @@
       const addBtn = document.createElement("button");
       addBtn.className = "ev-btn ev-add";
       addBtn.innerText = "Add";
-      addBtn.onclick = openAdd;
+      addBtn.onclick = () => openAdd();
       header.appendChild(addBtn);
-
       center.appendChild(header);
 
-      const arr = state.variables[currentCategory] || [];
+      const arr = live[currentCategory] || [];
       if (arr.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "ev-muted";
-        empty.innerText = "(no variables)";
-        center.appendChild(empty);
-        return;
+        const empty = document.createElement("div"); empty.className = "ev-muted"; empty.innerText = "(no variables)"; center.appendChild(empty); return;
       }
 
       for (const v of arr) {
-        const row = document.createElement("div");
-        row.className = "ev-row";
-
-        const leftCol = document.createElement("div");
-        leftCol.style.display = "flex";
-        leftCol.style.flexDirection = "column";
+        const row = document.createElement("div"); row.className = "ev-row";
+        const leftCol = document.createElement("div"); leftCol.style.display = "flex"; leftCol.style.flexDirection = "column";
         const usedCount = (function(){ try{ const ws = getMainWorkspaceSafe(); return ws ? countVariableUsage(ws, v) : 0; }catch(e){return 0;} })();
-        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">ID: ${v.id} &nbsp; • &nbsp; In use: (${usedCount})</div>`;
+        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">ID: ${v.id || "—"} &nbsp; • &nbsp; In use: (${usedCount})</div>`;
 
         const rightCol = document.createElement("div");
-        const edit = document.createElement("button");
-        edit.className = "ev-btn ev-edit"; edit.style.marginRight = "6px"; edit.innerText = "Edit";
-        edit.onclick = () => openEdit(v);
-
-        const del = document.createElement("button");
-        del.className = "ev-btn ev-del"; del.innerText = "Delete";
-        del.onclick = () => {
+        const editBtn = document.createElement("button"); editBtn.className = "ev-btn ev-edit"; editBtn.style.marginRight = "6px"; editBtn.innerText = "Edit";
+        editBtn.onclick = () => openEdit(v);
+        const delBtn = document.createElement("button"); delBtn.className = "ev-btn ev-del"; delBtn.innerText = "Delete";
+        delBtn.onclick = () => {
           if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-          state.variables[currentCategory] = state.variables[currentCategory].filter(x => x.id !== v.id);
-          saveState();
-          try { const ws = getMainWorkspaceSafe(); if (ws) { deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name); resyncWorkspaceVariableMap(ws); } } catch(e){}
-          rebuildCategories(); rebuildList();
+          try {
+            const ws = getMainWorkspaceSafe();
+            if (ws) {
+              // attempt delete by id first, then name
+              deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
+            }
+          } catch (e) { console.warn(e); }
+          // refresh UI
+          rebuildCategories();
+          rebuildList();
           right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
         };
 
-        rightCol.appendChild(edit);
-        rightCol.appendChild(del);
-        row.appendChild(leftCol);
-        row.appendChild(rightCol);
+        rightCol.appendChild(editBtn); rightCol.appendChild(delBtn);
+        row.appendChild(leftCol); row.appendChild(rightCol);
         center.appendChild(row);
       }
     }
 
-    // ADD
+    // Add: create variable directly in workspace (do not persist)
     function openAdd() {
       const name = prompt(`Create new ${currentCategory} variable — name:`);
       if (!name) return;
       const trimmed = name.trim();
       if (!trimmed) return;
-      if (!validateName(currentCategory, trimmed)) { alert("Duplicate name in this category not allowed."); return; }
-      const id = makeNextSequentialId();
-      const v = { id: id, name: trimmed, type: currentCategory };
-      state.variables[currentCategory].push(v);
-      saveState();
 
+      // generate id from workspace scan to avoid collisions
+      const id = makeNextSequentialIdFromWorkspace();
       try {
         const ws = getMainWorkspaceSafe();
-        if (ws) { createWorkspaceVariable(ws, v.name, v.type || currentCategory, v.id); resyncWorkspaceVariableMap(ws); }
-      } catch (e) {}
-
-      rebuildCategories(); rebuildList();
+        if (!ws) { alert("No workspace available."); return; }
+        // create in workspace (attempt keep id)
+        createWorkspaceVariable(ws, trimmed, currentCategory, id);
+      } catch (e) { console.warn("[ExtVars] add error:", e); }
+      // refresh UI
+      rebuildCategories();
+      rebuildList();
     }
 
-    // EDIT
+    // Edit: rename in workspace
     function openEdit(varDef) {
-      // populate details pane with editing UI
       right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Edit Variable</div>";
       const nameLabel = document.createElement("div"); nameLabel.className = "ev-muted"; nameLabel.innerText = "Name";
-      const nameInput = document.createElement("input"); nameInput.className = "ev-input"; nameInput.value = varDef.name;
+      const nameInput = document.createElement("input"); nameInput.className = "ev-input"; nameInput.value = varDef.name || "";
       right.appendChild(nameLabel); right.appendChild(nameInput);
 
       const idLabel = document.createElement("div"); idLabel.className = "ev-muted"; idLabel.innerText = "ID (locked)";
-      const idBox = document.createElement("div"); idBox.className = "ev-muted"; idBox.style.marginBottom = "8px"; idBox.innerText = varDef.id;
+      const idBox = document.createElement("div"); idBox.className = "ev-muted"; idBox.style.marginBottom = "8px"; idBox.innerText = varDef.id || "—";
       right.appendChild(idLabel); right.appendChild(idBox);
 
       const actions = document.createElement("div"); actions.className = "ev-actions";
@@ -528,26 +343,26 @@
       save.onclick = () => {
         const newName = nameInput.value.trim();
         if (!newName) { alert("Name cannot be empty"); return; }
-        if (!validateName(currentCategory, newName, varDef.id)) { alert("Duplicate name in this category not allowed."); return; }
-        const oldName = varDef.name;
-        varDef.name = newName;
-        saveState();
-        // update workspace variable object best-effort
         try {
           const ws = getMainWorkspaceSafe();
-          const map = workspaceGetVariableMap(ws);
-          if (map) {
-            let existing = null;
-            if (typeof map.getVariableById === "function") existing = map.getVariableById(varDef.id);
-            if (!existing && typeof map.getVariable === "function") existing = map.getVariable(varDef.id) || map.getVariable(oldName);
-            if (existing && existing.name !== undefined) existing.name = varDef.name;
-            // do a resync to be safe
-            resyncWorkspaceVariableMap(ws);
+          if (!ws) { alert("No workspace available."); return; }
+          // rename in workspace
+          const success = renameWorkspaceVariable(ws, varDef._raw || varDef, newName);
+          if (!success) {
+            // as fallback, try to find by id and mutate fields
+            const map = workspaceGetVariableMap(ws);
+            if (map && typeof map.getVariableById === "function") {
+              try { const ex = map.getVariableById(varDef.id); if (ex) ex.name = newName; }
+              catch(e){}
+            }
           }
-        } catch (e) {}
+        } catch (e) { console.warn("[ExtVars] rename failed:", e); }
+        // refresh UI
+        rebuildCategories();
         rebuildList();
         right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
       };
+
       const cancel = document.createElement("button"); cancel.className = "ev-btn ev-edit"; cancel.innerText = "Cancel";
       cancel.onclick = () => { right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
 
@@ -555,28 +370,18 @@
       right.appendChild(actions);
     }
 
-    function validateName(category, name, ignoreId=null) {
-      const arr = state.variables[category] || [];
-      return !arr.some(v => v.name.toLowerCase() === name.toLowerCase() && v.id !== ignoreId);
-    }
-
-    // initial render
     rebuildCategories();
     rebuildList();
 
-    // click outside closes and triggers final resync
+    // close on overlay click
     modalOverlay.addEventListener("click", (ev) => {
-      if (ev.target === modalOverlay) {
-        try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch (e) {}
-        removeModal();
-      }
+      if (ev.target === modalOverlay) removeModal();
     });
 
-    // add to DOM
     document.body.appendChild(modalOverlay);
   } // openModal end
 
-  // ----- Context menu registration (use ContextMenuRegistry like working copy/paste plugin)
+  // ---------- context menu registration (use ContextMenuRegistry when available) ----------
   function registerContextMenuItem() {
     try {
       const reg = (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.registry
@@ -602,7 +407,7 @@
       console.warn("[ExtVars] ContextMenuRegistry registration failed:", e);
     }
 
-    // fallback (best-effort DOM injection)
+    // fallback DOM injection (best-effort)
     (function domFallback() {
       document.addEventListener("contextmenu", () => {
         setTimeout(() => {
@@ -625,15 +430,12 @@
     })();
   }
 
-  // ----- initialization
+  // ---------- initialization ----------
   function initialize() {
-    loadState();
-    ensureStateCategories();
-    // attempt to pre-register into workspace
-    try { const ws = getMainWorkspaceSafe(); if (ws) registerAllVariablesInWorkspace(ws); } catch (e) {}
+    // just register context menu - we do NOT persist any variables across projects
     registerContextMenuItem();
     if (plugin) plugin.openManager = openModal;
-    console.info("[ExtVars] Extended Variable Manager initialized.");
+    console.info("[ExtVars] Live Extended Variable Manager initialized (workspace-only).");
   }
 
   setTimeout(initialize, 900);
