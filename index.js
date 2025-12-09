@@ -132,46 +132,62 @@
 
   // ---------- count variable usage ----------
   function countVariableUsage(ws, varDef) {
-    if (!ws || !varDef?.id) return 0;
-    const targetId = varDef.id;
-    const allBlocks = ws.getAllBlocks?.() || [];
-    const seen = new Set();
-    let totalCount = 0;
-    let scannedBlocks = 0;
+  if (!ws || !varDef) return 0;
+  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+  const targetId = varDef.id;
+  const targetName = varDef.name;
+  let count = 0;
+  const seenBlocks = new Set();
 
-    function traverse(block) {
-      if (!block || seen.has(block.id)) return 0;
-      seen.add(block.id);
-      scannedBlocks++;
-      let count = 0;
+  function traverse(block) {
+    if (!block || seenBlocks.has(block.id)) return;
+    seenBlocks.add(block.id);
 
-      if (block.fields?.VAR?.id === targetId) count++;
-
-      // standard inputList
-      if (Array.isArray(block.inputList)) {
-        for (const input of block.inputList) {
-          if (input.connection?.targetBlock) count += traverse(input.connection.targetBlock());
-        }
+    // 1️⃣ Direct variable reference block
+    if (block.type === "variableReferenceBlock" && block.fields?.VAR) {
+      if ((block.fields.VAR.id && block.fields.VAR.id === targetId) ||
+          (block.fields.VAR.name && block.fields.VAR.name === targetName)) {
+        count++;
       }
-
-      // extended BF2042 inputs
-      if (block.inputs && typeof block.inputs === "object") {
-        for (const key in block.inputs) {
-          const inputBlock = block.inputs[key]?.block;
-          if (inputBlock) count += traverse(inputBlock);
-        }
-      }
-
-      // next block in sequence
-      if (block.nextConnection?.targetBlock) count += traverse(block.nextConnection.targetBlock());
-
-      return count;
     }
 
-    for (const block of allBlocks) totalCount += traverse(block);
-    console.log(`[ExtVars] Variable "${varDef.name}" scanned ${scannedBlocks} blocks, found ${totalCount} uses`);
-    return totalCount;
+    // 2️⃣ GetVariable / SetVariable blocks
+    if ((block.type === "GetVariable" || block.type === "SetVariable") && block.inputs) {
+      for (const key in block.inputs) {
+        const inputBlock = block.inputs[key]?.block;
+        if (inputBlock) traverse(inputBlock);
+      }
+    }
+
+    // 3️⃣ Generic field check
+    if (typeof block.getFieldValue === "function") {
+      const val = block.getFieldValue("VAR");
+      if (val && val === targetName) count++;
+    }
+
+    // 4️⃣ Recurse into inputList (standard Blockly)
+    if (Array.isArray(block.inputList)) {
+      for (const input of block.inputList) {
+        if (input.connection && input.connection.targetBlock) {
+          traverse(input.connection.targetBlock());
+        }
+      }
+    }
+
+    // 5️⃣ Next block in sequence
+    if (block.nextConnection && block.nextConnection.targetBlock) {
+      traverse(block.nextConnection.targetBlock());
+    }
   }
+
+  for (const block of allBlocks) {
+    traverse(block);
+  }
+
+  console.log(`[ExtVars] Variable "${targetName}" scanned ${allBlocks.length} blocks, found ${count} uses`);
+  return count;
+}
+
 
   // ---------- inject CSS ----------
   (function injectStyle(){
