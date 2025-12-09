@@ -204,32 +204,31 @@ function countVariableUsage(ws, varDef) {
     const live = getLiveRegistry();
     const ws = getMainWorkspaceSafe();
     const usageCounts = {}; // key = var id
-    if(ws){
-      const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-      for(const cat of CATEGORIES){
-        for(const v of live[cat] || []){
-          let count = 0;
+if (ws) {
+  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+  for (const cat of CATEGORIES) {
+    for (const v of live[cat] || []) {
+      let count = 0;
 
-          function traverse(block){
-            if(!block) return;
-            if(block.fields && block.fields.VAR && block.fields.VAR.id === v.id) count++;
-            if(block.inputList && Array.isArray(block.inputList)){
-              block.inputList.forEach(input => {
-                if(input.connection && input.connection.targetBlock){
-                  traverse(input.connection.targetBlock());
-                }
-              });
-            }
-            if(block.nextConnection && block.nextConnection.targetBlock){
-              traverse(block.nextConnection.targetBlock());
-            }
+      for (const block of allBlocks) {
+        if (typeof block.getVarModels === "function") {
+          const vars = block.getVarModels();
+          if (Array.isArray(vars) && vars.some(varObj => varObj && varObj.id === v.id)) {
+            count++;
           }
-
-          allBlocks.forEach(traverse);
-          usageCounts[v.id] = count;
+        } else if (typeof block.getVars === "function") {
+          const names = block.getVars();
+          if (Array.isArray(names) && names.includes(v.name)) {
+            count++;
+          }
         }
       }
+
+      usageCounts[v.id] = count;
     }
+  }
+}
+
 
     modalOverlay=document.createElement("div"); modalOverlay.className="ev-overlay";
     const modal=document.createElement("div"); modal.className="ev-modal"; modalOverlay.appendChild(modal);
