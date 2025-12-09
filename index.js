@@ -142,42 +142,28 @@ function countVariableUsage(ws, varDef) {
   const targetId = varDef.id;
   let count = 0;
 
-  function traverseBlock(block) {
-    if (!block) return;
+  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
 
-    // 1. Check every field in the block
-    if (block.inputList && Array.isArray(block.inputList)) {
-      block.inputList.forEach(input => {
-        if (input.fieldRow) {
-          input.fieldRow.forEach(field => {
-            // field.getValue might return the variable id in some setups
-            const val = (field.getValue && field.getValue()) || (field.id) || null;
-
-            // Some field objects store the id inside field.getValue()
-            const fieldId = (typeof val === 'string' && val.startsWith('EV_')) ? val : (field.getValue && field.getValue()) || null;
-
-            if (fieldId === targetId) count++;
-          });
+  for (const block of allBlocks) {
+    if (typeof block.getVarModels === "function") {
+      const vars = block.getVarModels();
+      if (Array.isArray(vars)) {
+        if (vars.some(v => v && v.id === targetId)) {
+          count++;
         }
-
-        // Recursively traverse connected blocks
-        if (input.connection && input.connection.targetBlock) {
-          traverseBlock(input.connection.targetBlock());
-        }
-      });
-    }
-
-    // 2. Traverse next block in the stack
-    if (block.nextConnection && block.nextConnection.targetBlock) {
-      traverseBlock(block.nextConnection.targetBlock());
+      }
+    } else if (typeof block.getVars === "function") {
+      // fallback: check variable names
+      const names = block.getVars();
+      if (Array.isArray(names) && names.includes(varDef.name)) {
+        count++;
+      }
     }
   }
 
-  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-  allBlocks.forEach(traverseBlock);
-
   return count;
 }
+
 
 
 
