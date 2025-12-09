@@ -1,8 +1,6 @@
-// BF6 Extended Variable Manager - integrated, persistent, workspace-sync
+// BF6 Extended Variable Manager - Final (full, project-scoped, workspace-sync)
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
-
-  // defensive access to portal plugin API if present
   let plugin = null;
   try {
     if (typeof BF2042Portal !== "undefined" && BF2042Portal.Plugins && typeof BF2042Portal.Plugins.getPlugin === "function") {
@@ -14,78 +12,72 @@
     plugin = { id: PLUGIN_ID };
   }
 
-  const STORAGE_KEY = PLUGIN_ID + "-state-v1";
-
-  // ====== Workspace accessor (defensive) ======
-  function getMainWorkspaceSafe() {
-    try {
-      if (typeof _Blockly !== "undefined" && _Blockly && typeof _Blockly.getMainWorkspace === "function") {
-        return _Blockly.getMainWorkspace();
-      }
-      if (typeof Blockly !== "undefined" && Blockly && typeof Blockly.getMainWorkspace === "function") {
-        return Blockly.getMainWorkspace();
-      }
-      if (typeof BF2042Portal !== "undefined" && BF2042Portal.getMainWorkspace) {
-        try { return BF2042Portal.getMainWorkspace(); } catch (e) {}
-      }
-    } catch (e) { /* swallow */ }
-    return null;
-  }
-
-  // ====== Categories & state ======
-  const categories = [
+  // ----- categories
+  const CATEGORIES = [
     "Global","AreaTrigger","CapturePoint","EmplacementSpawner","HQ","InteractPoint","LootSpawner","MCOM",
     "Player","RingOfFire","ScreenEffect","Sector","SFX","SpatialObject","Spawner","SpawnPoint","Team",
     "Vehicle","VehicleSpawner","VFX","VO","WaypointPath","WorldIcon"
   ];
 
-  // persisted state object
-  let state = {
-    nextIdCounter: 1,
-    variables: {} // category -> [{id,name,type}]
-  };
-
+  // ----- state
+  let state = { nextIdCounter: 1, variables: {} };
   function ensureStateCategories() {
-    for (const c of categories) if (!Array.isArray(state.variables[c])) state.variables[c] = [];
+    for (const c of CATEGORIES) if (!Array.isArray(state.variables[c])) state.variables[c] = [];
   }
 
-  // ===== Persistence =====
+  // ----- storage key (project-scoped)
+  function getExperienceId() {
+    try {
+      if (typeof BF2042Portal !== "undefined" && BF2042Portal.currentExperienceId) return String(BF2042Portal.currentExperienceId);
+    } catch (e) {}
+    // fallback to pathname (last segment) or "default"
+    try {
+      const p = location.pathname || "";
+      const seg = p.split("/").filter(Boolean).slice(-1)[0];
+      if (seg) return seg;
+    } catch (e) {}
+    return "default";
+  }
+  function getStorageKey() {
+    const exp = getExperienceId();
+    return PLUGIN_ID + "-state-" + exp;
+  }
+
+  // ----- persistence
   function saveState() {
     try {
+      const key = getStorageKey();
+      const payload = JSON.stringify(state);
       if (typeof BF2042Portal !== "undefined" && BF2042Portal.Shared && typeof BF2042Portal.Shared.saveToLocalStorage === "function") {
-        BF2042Portal.Shared.saveToLocalStorage(STORAGE_KEY, state);
+        BF2042Portal.Shared.saveToLocalStorage(key, state);
       } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(key, payload);
       }
-    } catch (e) {
-      console.warn("[ExtVars] saveState failed:", e);
-    }
+    } catch (e) { console.warn("[ExtVars] saveState failed:", e); }
   }
-
   function loadState() {
     try {
+      const key = getStorageKey();
       let loaded = null;
       if (typeof BF2042Portal !== "undefined" && BF2042Portal.Shared && typeof BF2042Portal.Shared.loadFromLocalStorage === "function") {
-        loaded = BF2042Portal.Shared.loadFromLocalStorage(STORAGE_KEY);
+        loaded = BF2042Portal.Shared.loadFromLocalStorage(key);
       } else {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const raw = localStorage.getItem(key);
         if (raw) loaded = JSON.parse(raw);
       }
       if (loaded && typeof loaded === "object") {
-        // merge safely
+        // merge so we don't lose fields
         state = Object.assign({}, state, loaded);
+        if (!state.variables) state.variables = {};
       }
-    } catch (e) {
-      console.warn("[ExtVars] loadState failed:", e);
-    }
+    } catch (e) { console.warn("[ExtVars] loadState failed:", e); }
     ensureStateCategories();
 
-    // ensure nextIdCounter is above any existing EV_ ids
+    // set nextIdCounter above any EV_ in state
     try {
       let max = state.nextIdCounter || 1;
-      for (const cat of categories) {
-        const arr = state.variables[cat] || [];
-        for (const v of arr) {
+      for (const cat of CATEGORIES) {
+        for (const v of state.variables[cat] || []) {
           if (v && typeof v.id === "string" && v.id.startsWith("EV_")) {
             const n = parseInt(v.id.slice(3), 10);
             if (!isNaN(n) && n >= max) max = n + 1;
@@ -96,7 +88,17 @@
     } catch (e) {}
   }
 
-  // ===== Workspace variable helpers (defensive) =====
+  // ----- workspace access helpers
+  function getMainWorkspaceSafe() {
+    try {
+      if (typeof _Blockly !== "undefined" && _Blockly && typeof _Blockly.getMainWorkspace === "function") return _Blockly.getMainWorkspace();
+      if (typeof Blockly !== "undefined" && Blockly && typeof Blockly.getMainWorkspace === "function") return Blockly.getMainWorkspace();
+      if (typeof BF2042Portal !== "undefined" && BF2042Portal.getMainWorkspace) {
+        try { return BF2042Portal.getMainWorkspace(); } catch (e) {}
+      }
+    } catch (e) {}
+    return null;
+  }
   function workspaceGetVariableMap(ws) {
     try {
       if (!ws) return null;
@@ -155,7 +157,7 @@
     return false;
   }
 
-  // serialize traversal helper for usage counting
+  // ----- serialized traversal / usage counting
   function traverseSerializedBlocks(node, cb) {
     if (!node) return;
     cb(node);
@@ -167,7 +169,6 @@
     }
     if (node.next && node.next.block) traverseSerializedBlocks(node.next.block, cb);
   }
-
   function countVariableUsage(ws, varDef) {
     let count = 0;
     try {
@@ -200,24 +201,19 @@
     return count;
   }
 
-  // Register all saved variables into workspace (best-effort)
+  // ----- register/resync helpers
   function registerAllVariablesInWorkspace(ws) {
     try {
-      for (const cat of categories) {
-        const arr = state.variables[cat] || [];
-        for (const v of arr) {
-          try {
-            if (!workspaceHasVariableWithId(ws, v.id) && !workspaceHasVariableWithName(ws, v.name)) {
-              createWorkspaceVariable(ws, v.name, v.type || cat, v.id);
-            }
-          } catch (e) {}
+      for (const cat of CATEGORIES) {
+        for (const v of state.variables[cat] || []) {
+          if (!workspaceHasVariableWithId(ws, v.id) && !workspaceHasVariableWithName(ws, v.name)) {
+            try { createWorkspaceVariable(ws, v.name, v.type || cat, v.id); } catch (e) {}
+          }
         }
       }
       try { document.dispatchEvent(new Event("variables_refreshed")); } catch (e) {}
     } catch (e) { console.warn("[ExtVars] registerAllVariablesInWorkspace error:", e); }
   }
-
-  // resync workspace variable map by removing and re-adding (best-effort)
   function resyncWorkspaceVariableMap(ws) {
     try {
       if (!ws) return;
@@ -229,15 +225,15 @@
           for (const ex of Array.from(existing || [])) {
             try {
               if (typeof map.deleteVariableById === "function" && ex.getId) {
-                try { map.deleteVariableById(ex.getId()); } catch(e) {}
+                try { map.deleteVariableById(ex.getId()); } catch (e) {}
               } else if (typeof map.deleteVariable === "function") {
-                try { map.deleteVariable(ex); } catch(e) {}
+                try { map.deleteVariable(ex); } catch (e) {}
               }
-            } catch(e) {}
+            } catch (e) {}
           }
         }
       } catch (e) {}
-      for (const cat of categories) {
+      for (const cat of CATEGORIES) {
         for (const v of state.variables[cat] || []) {
           try { createWorkspaceVariable(ws, v.name, v.type || cat, v.id); } catch (e) {}
         }
@@ -248,310 +244,339 @@
     } catch (e) { console.warn("[ExtVars] resyncWorkspaceVariableMap error:", e); }
   }
 
-  // make next sequential EV id
+  // ----- ID allocation
   function makeNextSequentialId() {
-    // try to use monotonic counter first
     if (!state.nextIdCounter || typeof state.nextIdCounter !== "number") state.nextIdCounter = 1;
     const id = "EV_" + String(state.nextIdCounter).padStart(4, "0");
     state.nextIdCounter += 1;
     return id;
   }
 
-  // ====== UI CSS injection (keeps your original styles) ======
+  // ----- import workspace variables into plugin state (ensures any external creation is visible)
+  function syncWorkspaceIntoState() {
+    const ws = getMainWorkspaceSafe();
+    if (!ws) return;
+    const map = workspaceGetVariableMap(ws);
+    if (!map || typeof map.getVariables !== "function") return;
+    try {
+      const workspaceVars = map.getVariables();
+      let changed = false;
+      for (const wv of workspaceVars) {
+        const category = (wv.type && typeof wv.type === "string") ? wv.type : "Global";
+        if (!state.variables[category]) state.variables[category] = [];
+        const exists = state.variables[category].some(v => v.id === wv.id || v.name === wv.name);
+        if (!exists) {
+          state.variables[category].push({ id: wv.id || makeNextSequentialId(), name: wv.name, type: wv.type || category });
+          changed = true;
+        }
+      }
+      if (changed) saveState();
+    } catch (e) {
+      console.warn("[ExtVars] syncWorkspaceIntoState failed:", e);
+    }
+  }
+
+  // ----- UI CSS injection
   (function injectStyle(){
-    const style = document.createElement("style");
-    style.textContent = `
-        .varPopupOverlay {
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.55);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 999999;
-        }
-        .varPopup {
-            background: #1a1a1a;
-            padding: 18px;
-            width: 900px;
-            max-height: 86vh;
-            overflow: hidden;
-            display: flex;
-            border-radius: 8px;
-            box-shadow: 0 0 25px rgba(0,0,0,0.5);
-            color: #ddd;
-            font-family: Inter, Arial, sans-serif;
-        }
-        .varCategories {
-            width: 200px;
-            overflow-y: auto;
-            border-right: 1px solid #333;
-            padding-right: 10px;
-            margin-right: 12px;
-        }
-        .variable-category {
-            padding: 6px 10px;
-            cursor: pointer;
-            border-radius: 4px;
-            margin-bottom: 4px;
-            color: #ddd;
-            background: transparent;
-        }
-        .variable-category:hover { background-color: rgba(255,255,255,0.03); }
-        .variable-category.selected { background-color: rgba(255,255,255,0.08); border-left: 3px solid #ff0a03; }
-        .varList {
-            flex: 1;
-            overflow-y: auto;
-            padding-left: 6px;
-            color: #ddd;
-            display: flex;
-            flex-direction: column;
-        }
-        .varEntry {
-            padding: 8px;
-            background: #222;
-            margin-bottom: 8px;
-            border-radius: 6px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .buttonRow {
-            text-align: right;
-            padding-top: 12px;
-        }
-        .blueBtn {
-            background: #2ca72c;
-            padding: 6px 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-left: 6px;
-            color: #fff;
-            border: none;
-        }
-        .redBtn {
-            background: #a73232;
-            padding: 6px 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-left: 6px;
-            color: #fff;
-            border: none;
-        }
-        .smallMuted { color: #9aa; font-size: 12px; }
-        .detailBox { margin-top: 8px; font-size: 13px; color: #dfe6ea; }
+    const s = document.createElement("style");
+    s.textContent = `
+      .ev-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:999999}
+      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#0f0f10;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
+      .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
+      .ev-cats{width:240px;background:#121214;border-radius:8px;padding:10px;overflow-y:auto}
+      .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:transparent;color:#e9eef2;margin-bottom:6px}
+      .ev-cat:hover{background:#1a1a1c}
+      .ev-cat.selected{background:rgba(255,10,3,0.08);border-left:4px solid #ff0a03}
+      .ev-list{flex:1;background:#0b0b0c;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
+      .ev-row{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#0e0e0f;border-radius:6px;margin-bottom:8px}
+      .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
+      .ev-add{background:#2ca72c}
+      .ev-edit{background:#2b2b2b}
+      .ev-del{background:#a73232}
+      .ev-muted{color:#9aa1a8;font-size:12px}
+      .ev-details{width:320px;background:#121214;border-radius:8px;padding:10px;overflow:auto}
+      .ev-input{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#0b0b0c;color:#e9eef2;margin-bottom:8px}
+      .ev-actions{display:flex;justify-content:flex-end;margin-top:10px;gap:8px}
+      .ev-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+      .ev-title{font-weight:700;font-size:16px}
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(s);
   })();
 
-  // ====== UI: variable manager popup - based on your model, extended with persistence/workspace sync ======
-  function openVariableManager() {
+  // ----- Main UI modal builder (full featured)
+  let modalOverlay = null;
+  function removeModal() {
+    if (modalOverlay) {
+      try { modalOverlay.remove(); } catch (e) {}
+      modalOverlay = null;
+    }
+  }
+
+  function openModal() {
     loadState();
     ensureStateCategories();
 
-    let currentCategory = categories[0];
+    // import any variables from workspace so everything created by other methods shows
+    try { syncWorkspaceIntoState(); } catch (e) {}
 
-    // try to pre-register variables in workspace
-    const wsPre = getMainWorkspaceSafe();
-    if (wsPre) registerAllVariablesInWorkspace(wsPre);
+    // attempt to register all stored variables in workspace so they become available
+    try { const wsPre = getMainWorkspaceSafe(); if (wsPre) registerAllVariablesInWorkspace(wsPre); } catch (e) {}
 
-    // build overlay + popup
-    const overlay = document.createElement("div");
-    overlay.className = "varPopupOverlay";
+    removeModal();
 
-    const popup = document.createElement("div");
-    popup.className = "varPopup";
-    overlay.appendChild(popup);
+    modalOverlay = document.createElement("div");
+    modalOverlay.className = "ev-overlay";
 
-    // left / right
-    const categoryList = document.createElement("div");
-    categoryList.className = "varCategories";
-    const variableList = document.createElement("div");
-    variableList.className = "varList";
+    const modal = document.createElement("div");
+    modal.className = "ev-modal";
+    modalOverlay.appendChild(modal);
 
-    popup.appendChild(categoryList);
-    popup.appendChild(variableList);
-    document.body.appendChild(overlay);
+    // header
+    const top = document.createElement("div");
+    top.className = "ev-top";
+    const title = document.createElement("div");
+    title.className = "ev-title";
+    title.innerText = "Extended Variable Manager";
+    top.appendChild(title);
 
-    function getVariableCount(category) { return (state.variables[category]||[]).length; }
+    const topActions = document.createElement("div");
+    // import/export
+    const importBtn = document.createElement("button");
+    importBtn.className = "ev-btn ev-edit";
+    importBtn.style.marginRight = "6px";
+    importBtn.innerText = "Import";
+    importBtn.onclick = () => {
+      try {
+        const raw = prompt("Paste variables JSON (array of {id,name,type})");
+        if (!raw) return;
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) throw new Error("Invalid JSON (not array)");
+        for (const it of arr) {
+          const cat = it.type || "Global";
+          if (!state.variables[cat]) state.variables[cat]=[];
+          if (!state.variables[cat].some(v=>v.id===it.id)) state.variables[cat].push({id:it.id,name:it.name,type:cat});
+        }
+        saveState();
+        try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch(e) {}
+        rebuildCategories(); rebuildList();
+        alert("Imported.");
+      } catch (e) { alert("Import failed: "+e.message); }
+    };
+    topActions.appendChild(importBtn);
+
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "ev-btn ev-edit";
+    exportBtn.innerText = "Export";
+    exportBtn.onclick = () => {
+      try {
+        // flatten variables to an array
+        const out = [];
+        for (const c of CATEGORIES) for (const v of state.variables[c] || []) out.push({id:v.id,name:v.name,type:v.type});
+        const txt = JSON.stringify(out, null, 2);
+        prompt("Copy the JSON below:", txt);
+      } catch (e) { console.warn(e); }
+    };
+    topActions.appendChild(exportBtn);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ev-btn ev-del";
+    closeBtn.innerText = "Close";
+    closeBtn.onclick = () => { try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch(e) {} removeModal(); };
+    topActions.appendChild(closeBtn);
+
+    top.appendChild(topActions);
+    modal.appendChild(top);
+
+    const content = document.createElement("div");
+    content.className = "ev-content";
+    modal.appendChild(content);
+
+    // left categories
+    const left = document.createElement("div");
+    left.className = "ev-cats";
+    content.appendChild(left);
+
+    // center list
+    const center = document.createElement("div");
+    center.className = "ev-list";
+    content.appendChild(center);
+
+    // right details
+    const right = document.createElement("div");
+    right.className = "ev-details";
+    right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+    content.appendChild(right);
+
+    let currentCategory = CATEGORIES[0];
+
+    // helpers for UI rebuild
+    function getCount(cat) { return (state.variables[cat]||[]).length; }
 
     function rebuildCategories() {
-      categoryList.innerHTML = "";
-      categories.forEach(category => {
+      left.innerHTML = "";
+      for (const cat of CATEGORIES) {
         const el = document.createElement("div");
-        el.className = "variable-category";
-        el.textContent = `${category} (${getVariableCount(category)})`;
-        if (category === currentCategory) el.classList.add("selected");
-        el.addEventListener("click", () => {
-          categoryList.querySelectorAll(".variable-category").forEach(x => x.classList.remove("selected"));
-          el.classList.add("selected");
-          currentCategory = category;
+        el.className = "ev-cat";
+        if (cat === currentCategory) el.classList.add("selected");
+        el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
+        el.onclick = () => {
+          currentCategory = cat;
           rebuildCategories();
-          rebuildVariableList();
-        });
-        categoryList.appendChild(el);
-      });
+          rebuildList();
+          right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+        };
+        left.appendChild(el);
+      }
     }
 
-    function rebuildVariableList() {
-      variableList.innerHTML = "";
-
+    function rebuildList() {
+      center.innerHTML = "";
       const header = document.createElement("div");
       header.style.display = "flex";
       header.style.justifyContent = "space-between";
       header.style.alignItems = "center";
       header.style.marginBottom = "8px";
-
-      const h1 = document.createElement("div");
-      h1.innerHTML = `<strong>${currentCategory} Variables</strong><div class="smallMuted">Total: ${getVariableCount(currentCategory)}</div>`;
-      header.appendChild(h1);
+      const h = document.createElement("div");
+      h.innerHTML = `<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`;
+      header.appendChild(h);
 
       const addBtn = document.createElement("button");
-      addBtn.className = "blueBtn";
-      addBtn.textContent = "Add";
-      addBtn.addEventListener("click", () => openAddDialog());
+      addBtn.className = "ev-btn ev-add";
+      addBtn.innerText = "Add";
+      addBtn.onclick = openAdd;
       header.appendChild(addBtn);
 
-      variableList.appendChild(header);
+      center.appendChild(header);
 
       const arr = state.variables[currentCategory] || [];
       if (arr.length === 0) {
         const empty = document.createElement("div");
-        empty.className = "smallMuted";
-        empty.textContent = "(no variables)";
-        variableList.appendChild(empty);
-      } else {
-        for (const v of arr) {
-          const row = document.createElement("div");
-          row.className = "varEntry";
+        empty.className = "ev-muted";
+        empty.innerText = "(no variables)";
+        center.appendChild(empty);
+        return;
+      }
 
-          const left = document.createElement("div");
-          left.style.display = "flex";
-          left.style.flexDirection = "column";
+      for (const v of arr) {
+        const row = document.createElement("div");
+        row.className = "ev-row";
 
-          const usedCount = (function(){ try{ const ws = getMainWorkspaceSafe(); return ws ? countVariableUsage(ws, v) : 0; }catch(e){return 0;} })();
+        const leftCol = document.createElement("div");
+        leftCol.style.display = "flex";
+        leftCol.style.flexDirection = "column";
+        const usedCount = (function(){ try{ const ws = getMainWorkspaceSafe(); return ws ? countVariableUsage(ws, v) : 0; }catch(e){return 0;} })();
+        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">ID: ${v.id} &nbsp; • &nbsp; In use: (${usedCount})</div>`;
 
-          left.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="smallMuted">ID: ${v.id} &nbsp; • &nbsp; In use: (${usedCount})</div>`;
+        const rightCol = document.createElement("div");
+        const edit = document.createElement("button");
+        edit.className = "ev-btn ev-edit"; edit.style.marginRight = "6px"; edit.innerText = "Edit";
+        edit.onclick = () => openEdit(v);
 
-          const right = document.createElement("div");
+        const del = document.createElement("button");
+        del.className = "ev-btn ev-del"; del.innerText = "Delete";
+        del.onclick = () => {
+          if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
+          state.variables[currentCategory] = state.variables[currentCategory].filter(x => x.id !== v.id);
+          saveState();
+          try { const ws = getMainWorkspaceSafe(); if (ws) { deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name); resyncWorkspaceVariableMap(ws); } } catch(e){}
+          rebuildCategories(); rebuildList();
+          right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+        };
 
-          const editBtn = document.createElement("button");
-          editBtn.className = "blueBtn";
-          editBtn.textContent = "Edit";
-          editBtn.addEventListener("click", () => openEditDialog(v));
-
-          const delBtn = document.createElement("button");
-          delBtn.className = "redBtn";
-          delBtn.textContent = "Delete";
-          delBtn.addEventListener("click", () => {
-            if (!confirm(`Delete variable "${v.name}"? This may break blocks that reference it.`)) return;
-            state.variables[currentCategory] = state.variables[currentCategory].filter(x => x.id !== v.id);
-            saveState();
-            // delete from workspace if possible
-            try {
-              const ws = getMainWorkspaceSafe();
-              if (ws) deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-              resyncWorkspaceVariableMap(ws);
-            } catch (e) {}
-            rebuildCategories();
-            rebuildVariableList();
-          });
-
-          right.appendChild(editBtn);
-          right.appendChild(delBtn);
-
-          row.appendChild(left);
-          row.appendChild(right);
-          variableList.appendChild(row);
-        }
+        rightCol.appendChild(edit);
+        rightCol.appendChild(del);
+        row.appendChild(leftCol);
+        row.appendChild(rightCol);
+        center.appendChild(row);
       }
     }
 
-    function closeOverlay() {
-      try { overlay.remove(); } catch (e) {}
-    }
-
-    // Add dialog: only name input; sequential ID created
-    function openAddDialog() {
+    // ADD
+    function openAdd() {
       const name = prompt(`Create new ${currentCategory} variable — name:`);
       if (!name) return;
       const trimmed = name.trim();
       if (!trimmed) return;
-      // unique in category
-      if (!validateName(currentCategory, trimmed)) {
-        alert("Duplicate name in this category not allowed.");
-        return;
-      }
+      if (!validateName(currentCategory, trimmed)) { alert("Duplicate name in this category not allowed."); return; }
       const id = makeNextSequentialId();
-      const varDef = { id: id, name: trimmed, type: currentCategory };
-      state.variables[currentCategory].push(varDef);
+      const v = { id: id, name: trimmed, type: currentCategory };
+      state.variables[currentCategory].push(v);
       saveState();
 
-      // also register in workspace variable map if available
       try {
         const ws = getMainWorkspaceSafe();
-        if (ws) {
-          createWorkspaceVariable(ws, varDef.name, varDef.type || currentCategory, varDef.id);
-          resyncWorkspaceVariableMap(ws);
-        }
+        if (ws) { createWorkspaceVariable(ws, v.name, v.type || currentCategory, v.id); resyncWorkspaceVariableMap(ws); }
       } catch (e) {}
 
-      rebuildCategories();
-      rebuildVariableList();
+      rebuildCategories(); rebuildList();
     }
 
-    // Edit dialog: only name editable
-    function openEditDialog(varDef) {
-      const newName = prompt("Edit variable name:", varDef.name);
-      if (!newName) return;
-      const trimmed = newName.trim();
-      if (!trimmed) return;
-      if (!validateName(currentCategory, trimmed, varDef.id)) {
-        alert("Duplicate name in this category not allowed.");
-        return;
-      }
-      const oldName = varDef.name;
-      varDef.name = trimmed;
-      saveState();
+    // EDIT
+    function openEdit(varDef) {
+      // populate details pane with editing UI
+      right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Edit Variable</div>";
+      const nameLabel = document.createElement("div"); nameLabel.className = "ev-muted"; nameLabel.innerText = "Name";
+      const nameInput = document.createElement("input"); nameInput.className = "ev-input"; nameInput.value = varDef.name;
+      right.appendChild(nameLabel); right.appendChild(nameInput);
 
-      // attempt to update workspace variable name (best-effort)
-      try {
-        const ws = getMainWorkspaceSafe();
-        if (ws) {
+      const idLabel = document.createElement("div"); idLabel.className = "ev-muted"; idLabel.innerText = "ID (locked)";
+      const idBox = document.createElement("div"); idBox.className = "ev-muted"; idBox.style.marginBottom = "8px"; idBox.innerText = varDef.id;
+      right.appendChild(idLabel); right.appendChild(idBox);
+
+      const actions = document.createElement("div"); actions.className = "ev-actions";
+      const save = document.createElement("button"); save.className = "ev-btn ev-add"; save.innerText = "Save";
+      save.onclick = () => {
+        const newName = nameInput.value.trim();
+        if (!newName) { alert("Name cannot be empty"); return; }
+        if (!validateName(currentCategory, newName, varDef.id)) { alert("Duplicate name in this category not allowed."); return; }
+        const oldName = varDef.name;
+        varDef.name = newName;
+        saveState();
+        // update workspace variable object best-effort
+        try {
+          const ws = getMainWorkspaceSafe();
           const map = workspaceGetVariableMap(ws);
           if (map) {
-            try {
-              let existing = null;
-              if (typeof map.getVariableById === "function") existing = map.getVariableById(varDef.id);
-              if (!existing && typeof map.getVariable === "function") existing = map.getVariable(varDef.id) || map.getVariable(oldName);
-              if (existing && existing.name !== undefined) existing.name = varDef.name;
-              // fallback: resync map
-              resyncWorkspaceVariableMap(ws);
-            } catch (e) {}
+            let existing = null;
+            if (typeof map.getVariableById === "function") existing = map.getVariableById(varDef.id);
+            if (!existing && typeof map.getVariable === "function") existing = map.getVariable(varDef.id) || map.getVariable(oldName);
+            if (existing && existing.name !== undefined) existing.name = varDef.name;
+            // do a resync to be safe
+            resyncWorkspaceVariableMap(ws);
           }
-        }
-      } catch (e) {}
+        } catch (e) {}
+        rebuildList();
+        right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+      };
+      const cancel = document.createElement("button"); cancel.className = "ev-btn ev-edit"; cancel.innerText = "Cancel";
+      cancel.onclick = () => { right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
 
-      rebuildCategories();
-      rebuildVariableList();
+      actions.appendChild(cancel); actions.appendChild(save);
+      right.appendChild(actions);
     }
 
-    // validation
-    function validateName(category, name, ignoreId = null) {
+    function validateName(category, name, ignoreId=null) {
       const arr = state.variables[category] || [];
       return !arr.some(v => v.name.toLowerCase() === name.toLowerCase() && v.id !== ignoreId);
     }
 
-    // close on background click
-    overlay.addEventListener("click", (ev) => {
-      if (ev.target === overlay) closeOverlay();
+    // initial render
+    rebuildCategories();
+    rebuildList();
+
+    // click outside closes and triggers final resync
+    modalOverlay.addEventListener("click", (ev) => {
+      if (ev.target === modalOverlay) {
+        try { const ws = getMainWorkspaceSafe(); if (ws) resyncWorkspaceVariableMap(ws); } catch (e) {}
+        removeModal();
+      }
     });
 
-    rebuildCategories();
-    rebuildVariableList();
-  }
+    // add to DOM
+    document.body.appendChild(modalOverlay);
+  } // openModal end
 
-  // ===== Context menu registration via ContextMenuRegistry like copy/paste plugin =====
+  // ----- Context menu registration (use ContextMenuRegistry like working copy/paste plugin)
   function registerContextMenuItem() {
     try {
       const reg = (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.registry
@@ -562,7 +587,7 @@
           id: "manageExtendedVariables",
           displayText: "Manage Variables",
           preconditionFn: () => "enabled",
-          callback: () => openVariableManager(),
+          callback: () => openModal(),
           scopeType: (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry) ? _Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
                       : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry) ? Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
                       : null,
@@ -577,7 +602,7 @@
       console.warn("[ExtVars] ContextMenuRegistry registration failed:", e);
     }
 
-    // fallback to DOM injection (best-effort)
+    // fallback (best-effort DOM injection)
     (function domFallback() {
       document.addEventListener("contextmenu", () => {
         setTimeout(() => {
@@ -588,10 +613,10 @@
           el.setAttribute("data-extvars", "1");
           el.style.padding = "6px 10px";
           el.style.cursor = "pointer";
-          el.style.color = "#fff";
+          el.style.color = "#e9eef2";
           el.textContent = "Manage Variables";
-          el.addEventListener("click", (e) => {
-            openVariableManager();
+          el.addEventListener("click", () => {
+            openModal();
             try { menu.style.display = "none"; } catch(e){}
           });
           menu.appendChild(el);
@@ -600,22 +625,16 @@
     })();
   }
 
-  // ===== Init =====
+  // ----- initialization
   function initialize() {
     loadState();
     ensureStateCategories();
-    // attempt to pre-register saved variables in workspace
-    try {
-      const ws = getMainWorkspaceSafe();
-      if (ws) registerAllVariablesInWorkspace(ws);
-    } catch (e) {}
+    // attempt to pre-register into workspace
+    try { const ws = getMainWorkspaceSafe(); if (ws) registerAllVariablesInWorkspace(ws); } catch (e) {}
     registerContextMenuItem();
-
-    // expose for debugging/manual open
-    if (plugin) plugin.openExtendedVariables = openVariableManager;
+    if (plugin) plugin.openManager = openModal;
     console.info("[ExtVars] Extended Variable Manager initialized.");
   }
 
-  // Run initialize after short delay to allow portal/Blockly to be ready
   setTimeout(initialize, 900);
 })();
