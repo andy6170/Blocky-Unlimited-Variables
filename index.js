@@ -199,137 +199,135 @@ function countVariableUsage(ws, varDef) {
   let modalOverlay = null;
   function removeModal(){ if(modalOverlay){ try{modalOverlay.remove();}catch(e){} modalOverlay=null;} }
 
-  function openModal(){
-    removeModal();
-    const live = getLiveRegistry();
-    const ws = getMainWorkspaceSafe();
-    const usageCounts = {}; // key = var id
-if (ws) {
-  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+  function openModal() {
+  removeModal();
+  const ws = getMainWorkspaceSafe();
+  const live = getLiveRegistry();
+  const usageCounts = {}; // key = var id
 
-  function blockUsesVariable(block, varId, varName) {
-    if (!block) return false;
+  if (ws) {
+    const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
 
-    // check current block
-    if (typeof block.getVarModels === "function") {
-      const vars = block.getVarModels();
-      if (Array.isArray(vars) && vars.some(v => v && v.id === varId)) return true;
-    } else if (typeof block.getVars === "function") {
-      const names = block.getVars();
-      if (Array.isArray(names) && names.includes(varName)) return true;
-    }
+    // Scan a block and all its nested blocks for usage of a variable ID
+    function blockUsesVariable(block, varId) {
+      if (!block) return false;
 
-    // check inputs recursively
-    if (Array.isArray(block.inputList)) {
-      for (const input of block.inputList) {
-        if (input.connection && input.connection.targetBlock) {
-          if (blockUsesVariable(input.connection.targetBlock(), varId, varName)) return true;
+      // 1. Check fields in the block
+      if (Array.isArray(block.inputList)) {
+        for (const input of block.inputList) {
+          if (Array.isArray(input.fieldRow)) {
+            for (const field of input.fieldRow) {
+              try {
+                if (field && (field.constructor.name === "FieldVariable" || field.type === "field_variable")) {
+                  // field.getValue() returns the variable ID
+                  const id = field.getValue?.() || field?.variable?.id;
+                  if (id === varId) return true;
+                }
+              } catch (e) { }
+            }
+          }
         }
       }
-    }
 
-    // check next block
-    if (block.nextConnection && block.nextConnection.targetBlock) {
-      if (blockUsesVariable(block.nextConnection.targetBlock(), varId, varName)) return true;
-    }
-
-    return false;
-  }
-
-  for (const cat of CATEGORIES) {
-    for (const v of live[cat] || []) {
-      let count = 0;
-      for (const block of allBlocks) {
-        if (blockUsesVariable(block, v.id, v.name)) count++;
+      // 2. Check connected child blocks recursively
+      if (Array.isArray(block.inputList)) {
+        for (const input of block.inputList) {
+          if (input.connection && input.connection.targetBlock) {
+            const child = input.connection.targetBlock();
+            if (child && blockUsesVariable(child, varId)) return true;
+          }
+        }
       }
-      usageCounts[v.id] = count;
+
+      // 3. Check next block in the sequence
+      if (block.nextConnection && block.nextConnection.targetBlock) {
+        const next = block.nextConnection.targetBlock();
+        if (next && blockUsesVariable(next, varId)) return true;
+      }
+
+      return false;
+    }
+
+    // Count usage for each variable
+    for (const cat of CATEGORIES) {
+      for (const v of live[cat] || []) {
+        let count = 0;
+        for (const block of allBlocks) {
+          if (blockUsesVariable(block, v.id)) count++;
+        }
+        usageCounts[v.id] = count;
+      }
     }
   }
+
+  // ---- rest of your modal code stays the same ----
+  modalOverlay = document.createElement("div"); modalOverlay.className = "ev-overlay";
+  const modal = document.createElement("div"); modal.className = "ev-modal"; modalOverlay.appendChild(modal);
+
+  // header
+  const top = document.createElement("div"); top.className = "ev-top";
+  const title = document.createElement("div"); title.className = "ev-title"; title.innerText = "Extended Variable Manager"; top.appendChild(title);
+  const topActions = document.createElement("div"); 
+  const closeBtn = document.createElement("button"); closeBtn.className = "ev-btn ev-del"; closeBtn.innerText = "Close"; 
+  closeBtn.onclick = () => removeModal(); 
+  topActions.appendChild(closeBtn); 
+  top.appendChild(topActions); 
+  modal.appendChild(top);
+
+  // content
+  const content = document.createElement("div"); content.className = "ev-content"; modal.appendChild(content);
+  const left = document.createElement("div"); left.className = "ev-cats";
+  const center = document.createElement("div"); center.className = "ev-list";
+  const right = document.createElement("div"); right.className = "ev-details"; 
+  right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+  content.appendChild(left); content.appendChild(center); content.appendChild(right);
+
+  let currentCategory = CATEGORIES[0];
+  function getCount(cat) { return (live[cat] || []).length; }
+
+  function rebuildCategories() {
+    left.innerHTML = "";
+    for (const cat of CATEGORIES) {
+      const el = document.createElement("div"); el.className = "ev-cat";
+      if (cat === currentCategory) el.classList.add("selected");
+      el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
+      el.onclick = () => { currentCategory = cat; rebuildCategories(); rebuildList(); right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
+      left.appendChild(el);
+    }
+  }
+
+  function rebuildList() {
+    const fresh = getLiveRegistry(); Object.assign(live, fresh);
+    center.innerHTML = "";
+    const header = document.createElement("div"); header.style.display = "flex"; header.style.justifyContent = "space-between"; header.style.alignItems = "center"; header.style.marginBottom = "8px";
+    const h = document.createElement("div"); h.innerHTML = `<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`; header.appendChild(h);
+    const addBtn = document.createElement("button"); addBtn.className = "ev-btn ev-add"; addBtn.innerText = "Add"; addBtn.onclick = () => openAdd(); header.appendChild(addBtn); center.appendChild(header);
+
+    const arr = live[currentCategory] || [];
+    if (arr.length === 0) { const empty = document.createElement("div"); empty.className = "ev-muted"; empty.innerText = "(no variables)"; center.appendChild(empty); return; }
+
+    for (const v of arr) {
+      const row = document.createElement("div"); row.className = "ev-row";
+      const leftCol = document.createElement("div"); leftCol.style.display = "flex"; leftCol.style.flexDirection = "column";
+      const usedCount = usageCounts[v.id] || 0;
+      leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
+
+      const rightCol = document.createElement("div");
+      const editBtn = document.createElement("button"); editBtn.className = "ev-btn ev-edit"; editBtn.style.marginRight = "6px"; editBtn.innerText = "Edit"; editBtn.onclick = () => openEdit(v);
+      const delBtn = document.createElement("button"); delBtn.className = "ev-btn ev-del"; delBtn.innerText = "Delete"; delBtn.onclick = () => {
+        if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
+        try { const ws = getMainWorkspaceSafe(); if (ws) { deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name); } } catch (e) { console.warn(e); }
+        rebuildCategories(); rebuildList(); right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+      };
+      rightCol.appendChild(editBtn); rightCol.appendChild(delBtn); row.appendChild(leftCol); row.appendChild(rightCol); center.appendChild(row);
+    }
+  }
+
+  rebuildCategories(); rebuildList();
+  modalOverlay.addEventListener("click", (ev) => { if (ev.target === modalOverlay) removeModal(); });
+  document.body.appendChild(modalOverlay);
 }
 
-
-
-    modalOverlay=document.createElement("div"); modalOverlay.className="ev-overlay";
-    const modal=document.createElement("div"); modal.className="ev-modal"; modalOverlay.appendChild(modal);
-
-    // header
-    const top=document.createElement("div"); top.className="ev-top";
-    const title=document.createElement("div"); title.className="ev-title"; title.innerText="Extended Variable Manager"; top.appendChild(title);
-    const topActions=document.createElement("div"); const closeBtn=document.createElement("button"); closeBtn.className="ev-btn ev-del"; closeBtn.innerText="Close"; closeBtn.onclick=()=>removeModal(); topActions.appendChild(closeBtn); top.appendChild(topActions);
-    modal.appendChild(top);
-
-    // content
-    const content=document.createElement("div"); content.className="ev-content"; modal.appendChild(content);
-    const left=document.createElement("div"); left.className="ev-cats";
-    const center=document.createElement("div"); center.className="ev-list";
-    const right=document.createElement("div"); right.className="ev-details"; right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-    content.appendChild(left); content.appendChild(center); content.appendChild(right);
-
-    let currentCategory=CATEGORIES[0];
-    function getCount(cat){ return (live[cat]||[]).length; }
-
-    function rebuildCategories(){
-      left.innerHTML="";
-      for(const cat of CATEGORIES){
-        const el=document.createElement("div"); el.className="ev-cat";
-        if(cat===currentCategory) el.classList.add("selected");
-        el.innerHTML=`<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
-        el.onclick=()=>{ currentCategory=cat; rebuildCategories(); rebuildList(); right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
-        left.appendChild(el);
-      }
-    }
-
-    function rebuildList(){
-      const fresh=getLiveRegistry(); Object.assign(live,fresh);
-      center.innerHTML="";
-      const header=document.createElement("div"); header.style.display="flex"; header.style.justifyContent="space-between"; header.style.alignItems="center"; header.style.marginBottom="8px";
-      const h=document.createElement("div"); h.innerHTML=`<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`; header.appendChild(h);
-      const addBtn=document.createElement("button"); addBtn.className="ev-btn ev-add"; addBtn.innerText="Add"; addBtn.onclick=()=>openAdd(); header.appendChild(addBtn); center.appendChild(header);
-
-      const arr=live[currentCategory]||[];
-      if(arr.length===0){ const empty=document.createElement("div"); empty.className="ev-muted"; empty.innerText="(no variables)"; center.appendChild(empty); return; }
-
-      for(const v of arr){
-        const row=document.createElement("div"); row.className="ev-row";
-        const leftCol=document.createElement("div"); leftCol.style.display="flex"; leftCol.style.flexDirection="column";
-        const usedCount = usageCounts[v.id] || 0;
-        leftCol.innerHTML=`<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
-
-        const rightCol=document.createElement("div");
-        const editBtn=document.createElement("button"); editBtn.className="ev-btn ev-edit"; editBtn.style.marginRight="6px"; editBtn.innerText="Edit"; editBtn.onclick=()=>openEdit(v);
-        const delBtn=document.createElement("button"); delBtn.className="ev-btn ev-del"; delBtn.innerText="Delete"; delBtn.onclick=()=>{
-          if(!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-          try{ const ws=getMainWorkspaceSafe(); if(ws){ deleteWorkspaceVariable(ws,v.id)||deleteWorkspaceVariable(ws,v.name); } }catch(e){console.warn(e);}
-          rebuildCategories(); rebuildList(); right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-        };
-        rightCol.appendChild(editBtn); rightCol.appendChild(delBtn); row.appendChild(leftCol); row.appendChild(rightCol); center.appendChild(row);
-      }
-    }
-
-    function openAdd(){
-      const name=prompt(`Create new ${currentCategory} variable — name:`); if(!name) return; const trimmed=name.trim(); if(!trimmed) return;
-      const id=makeNextSequentialIdFromWorkspace();
-      try{ const ws=getMainWorkspaceSafe(); if(!ws){ alert("No workspace available."); return; } createWorkspaceVariable(ws,trimmed,currentCategory,id); }catch(e){console.warn("[ExtVars] add error:",e);}
-      rebuildCategories(); rebuildList();
-    }
-
-    function openEdit(varDef){
-      right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Edit Variable</div>";
-      const nameLabel=document.createElement("div"); nameLabel.className="ev-muted"; nameLabel.innerText="Name"; const nameInput=document.createElement("input"); nameInput.className="ev-input"; nameInput.value=varDef.name||""; right.appendChild(nameLabel); right.appendChild(nameInput);
-      const actions=document.createElement("div"); actions.className="ev-actions";
-      const save=document.createElement("button"); save.className="ev-btn ev-add"; save.innerText="Save"; save.onclick=()=>{
-        const newName=nameInput.value.trim(); if(!newName){alert("Name cannot be empty"); return;}
-        try{ const ws=getMainWorkspaceSafe(); if(!ws){ alert("No workspace available."); return;} renameWorkspaceVariable(ws,varDef._raw||varDef,newName);}catch(e){console.warn("[ExtVars] rename failed:",e);}
-        rebuildCategories(); rebuildList(); right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-      };
-      const cancel=document.createElement("button"); cancel.className="ev-btn ev-edit"; cancel.innerText="Cancel"; cancel.onclick=()=>{ right.innerHTML="<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
-      actions.appendChild(cancel); actions.appendChild(save); right.appendChild(actions);
-    }
-
-    rebuildCategories(); rebuildList();
-    modalOverlay.addEventListener("click",(ev)=>{ if(ev.target===modalOverlay) removeModal(); });
-    document.body.appendChild(modalOverlay);
-  }
 
   // ---------- context menu ----------
   function registerContextMenuItem(){
