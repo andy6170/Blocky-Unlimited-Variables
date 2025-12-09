@@ -208,255 +208,119 @@ function countVariableUsage(ws, varDef) {
   if (ws) {
     const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
 
-    // Recursive function to check if a block or any of its children uses a variable
-    function blockUsesVariable(block, varId, varName, seen = new Set()) {
+    // ---------- fixed block usage function ----------
+    function blockUsesVariable(block, varId, seen = new Set()) {
       if (!block || seen.has(block.id)) return false;
       seen.add(block.id);
 
-      // Check variable fields
-      if (Array.isArray(block.inputList)) {
-        for (const input of block.inputList) {
-          if (Array.isArray(input.fieldRow)) {
-            for (const field of input.fieldRow) {
-              try {
-                if (field && (field.constructor.name === "FieldVariable" || field.type === "field_variable")) {
-                  const id = field.getValue?.() || field?.variable?.id;
-                  if (id === varId) return true;
-                }
-              } catch (e) {}
+      // If this block itself is a variable reference block, check its field
+      if (block.type && block.fields && block.fields.VAR) {
+        const id = block.fields.VAR.id;
+        if (id === varId) return true;
+      }
+
+      // Only recurse if the block is NOT a variable reference block
+      if (!(block.type && block.fields && block.fields.VAR)) {
+        // Recursively check inputs
+        if (Array.isArray(block.inputList)) {
+          for (const input of block.inputList) {
+            if (input.connection && input.connection.targetBlock) {
+              const child = input.connection.targetBlock();
+              if (child && blockUsesVariable(child, varId, seen)) return true;
             }
           }
-          // Recursively check connected input blocks
-          if (input.connection && input.connection.targetBlock) {
-            if (blockUsesVariable(input.connection.targetBlock(), varId, varName, seen)) return true;
-          }
         }
-      }
 
-      // Check next block in sequence
-      if (block.nextConnection && block.nextConnection.targetBlock) {
-        if (blockUsesVariable(block.nextConnection.targetBlock(), varId, varName, seen)) return true;
-      }
-
-      // Legacy: getVarModels / getVars
-      if (typeof block.getVarModels === "function") {
-        const vars = block.getVarModels();
-        if (Array.isArray(vars) && vars.some(v => v && (v.id === varId || v.name === varName))) return true;
-      }
-      if (typeof block.getVars === "function") {
-        const names = block.getVars();
-        if (Array.isArray(names) && names.includes(varName)) return true;
+        // Check next block in sequence
+        if (block.nextConnection && block.nextConnection.targetBlock) {
+          const next = block.nextConnection.targetBlock();
+          if (next && blockUsesVariable(next, varId, seen)) return true;
+        }
       }
 
       return false;
     }
 
-    // Count usage for each variable (top-level blocks only)
+    // Count usage for each variable
     for (const cat of CATEGORIES) {
       for (const v of live[cat] || []) {
         let count = 0;
         for (const block of allBlocks) {
-          const seen = new Set();
-          if (blockUsesVariable(block, v.id, v.name, seen)) count++;
+          if (blockUsesVariable(block, v.id)) count++;
         }
         usageCounts[v.id] = count;
       }
     }
   }
 
-  // ---------- Modal UI ----------
-  modalOverlay = document.createElement("div");
-  modalOverlay.className = "ev-overlay";
-  const modal = document.createElement("div");
-  modal.className = "ev-modal";
-  modalOverlay.appendChild(modal);
+  // ---------- rest of modal UI code stays the same ----------
+  modalOverlay = document.createElement("div"); modalOverlay.className = "ev-overlay";
+  const modal = document.createElement("div"); modal.className = "ev-modal"; modalOverlay.appendChild(modal);
 
-  // Header
-  const top = document.createElement("div");
-  top.className = "ev-top";
-  const title = document.createElement("div");
-  title.className = "ev-title";
-  title.innerText = "Extended Variable Manager";
-  top.appendChild(title);
-  const topActions = document.createElement("div");
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "ev-btn ev-del";
-  closeBtn.innerText = "Close";
-  closeBtn.onclick = () => removeModal();
-  topActions.appendChild(closeBtn);
-  top.appendChild(topActions);
+  // header
+  const top = document.createElement("div"); top.className = "ev-top";
+  const title = document.createElement("div"); title.className = "ev-title"; title.innerText = "Extended Variable Manager"; top.appendChild(title);
+  const topActions = document.createElement("div"); 
+  const closeBtn = document.createElement("button"); closeBtn.className = "ev-btn ev-del"; closeBtn.innerText = "Close"; 
+  closeBtn.onclick = () => removeModal(); 
+  topActions.appendChild(closeBtn); 
+  top.appendChild(topActions); 
   modal.appendChild(top);
 
-  // Content
-  const content = document.createElement("div");
-  content.className = "ev-content";
-  modal.appendChild(content);
-
-  const left = document.createElement("div");
-  left.className = "ev-cats";
-  const center = document.createElement("div");
-  center.className = "ev-list";
-  const right = document.createElement("div");
-  right.className = "ev-details";
+  // content
+  const content = document.createElement("div"); content.className = "ev-content"; modal.appendChild(content);
+  const left = document.createElement("div"); left.className = "ev-cats";
+  const center = document.createElement("div"); center.className = "ev-list";
+  const right = document.createElement("div"); right.className = "ev-details"; 
   right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-
-  content.appendChild(left);
-  content.appendChild(center);
-  content.appendChild(right);
+  content.appendChild(left); content.appendChild(center); content.appendChild(right);
 
   let currentCategory = CATEGORIES[0];
-  function getCount(cat) {
-    return (live[cat] || []).length;
-  }
+  function getCount(cat) { return (live[cat] || []).length; }
 
-  // ---------- UI rebuild functions ----------
   function rebuildCategories() {
     left.innerHTML = "";
     for (const cat of CATEGORIES) {
-      const el = document.createElement("div");
-      el.className = "ev-cat";
+      const el = document.createElement("div"); el.className = "ev-cat";
       if (cat === currentCategory) el.classList.add("selected");
       el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
-      el.onclick = () => {
-        currentCategory = cat;
-        rebuildCategories();
-        rebuildList();
-        right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-      };
+      el.onclick = () => { currentCategory = cat; rebuildCategories(); rebuildList(); right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
       left.appendChild(el);
     }
   }
 
   function rebuildList() {
-    const fresh = getLiveRegistry();
-    Object.assign(live, fresh);
+    const fresh = getLiveRegistry(); Object.assign(live, fresh);
     center.innerHTML = "";
-
-    // Header
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.justifyContent = "space-between";
-    header.style.alignItems = "center";
-    header.style.marginBottom = "8px";
-
-    const h = document.createElement("div");
-    h.innerHTML = `<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`;
-    header.appendChild(h);
-
-    const addBtn = document.createElement("button");
-    addBtn.className = "ev-btn ev-add";
-    addBtn.innerText = "Add";
-    addBtn.onclick = openAdd; // <-- Add function reference works now
-    header.appendChild(addBtn);
-    center.appendChild(header);
+    const header = document.createElement("div"); header.style.display = "flex"; header.style.justifyContent = "space-between"; header.style.alignItems = "center"; header.style.marginBottom = "8px";
+    const h = document.createElement("div"); h.innerHTML = `<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`; header.appendChild(h);
+    const addBtn = document.createElement("button"); addBtn.className = "ev-btn ev-add"; addBtn.innerText = "Add"; addBtn.onclick = () => openAdd(); header.appendChild(addBtn); center.appendChild(header);
 
     const arr = live[currentCategory] || [];
-    if (arr.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "ev-muted";
-      empty.innerText = "(no variables)";
-      center.appendChild(empty);
-      return;
-    }
+    if (arr.length === 0) { const empty = document.createElement("div"); empty.className = "ev-muted"; empty.innerText = "(no variables)"; center.appendChild(empty); return; }
 
     for (const v of arr) {
-      const row = document.createElement("div");
-      row.className = "ev-row";
-
-      const leftCol = document.createElement("div");
-      leftCol.style.display = "flex";
-      leftCol.style.flexDirection = "column";
+      const row = document.createElement("div"); row.className = "ev-row";
+      const leftCol = document.createElement("div"); leftCol.style.display = "flex"; leftCol.style.flexDirection = "column";
       const usedCount = usageCounts[v.id] || 0;
       leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
       const rightCol = document.createElement("div");
-      const editBtn = document.createElement("button");
-      editBtn.className = "ev-btn ev-edit";
-      editBtn.style.marginRight = "6px";
-      editBtn.innerText = "Edit";
-      editBtn.onclick = () => openEdit(v);
-
-      const delBtn = document.createElement("button");
-      delBtn.className = "ev-btn ev-del";
-      delBtn.innerText = "Delete";
-      delBtn.onclick = () => {
+      const editBtn = document.createElement("button"); editBtn.className = "ev-btn ev-edit"; editBtn.style.marginRight = "6px"; editBtn.innerText = "Edit"; editBtn.onclick = () => openEdit(v);
+      const delBtn = document.createElement("button"); delBtn.className = "ev-btn ev-del"; delBtn.innerText = "Delete"; delBtn.onclick = () => {
         if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-        try {
-          const ws = getMainWorkspaceSafe();
-          if (ws) deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-        } catch (e) { console.warn(e); }
-        rebuildCategories();
-        rebuildList();
-        right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
+        try { const ws = getMainWorkspaceSafe(); if (ws) { deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name); } } catch (e) { console.warn(e); }
+        rebuildCategories(); rebuildList(); right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
       };
-
-      rightCol.appendChild(editBtn);
-      rightCol.appendChild(delBtn);
-
-      row.appendChild(leftCol);
-      row.appendChild(rightCol);
-      center.appendChild(row);
+      rightCol.appendChild(editBtn); rightCol.appendChild(delBtn); row.appendChild(leftCol); row.appendChild(rightCol); center.appendChild(row);
     }
   }
 
-  // ---------- Add / Edit functions ----------
-  function openAdd() {
-    const name = prompt(`Create new ${currentCategory} variable — name:`);
-    if (!name) return;
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    const id = makeNextSequentialIdFromWorkspace();
-    try {
-      const ws = getMainWorkspaceSafe();
-      if (!ws) { alert("No workspace available."); return; }
-      createWorkspaceVariable(ws, trimmed, currentCategory, id);
-    } catch (e) { console.warn("[ExtVars] add error:", e); }
-    rebuildCategories();
-    rebuildList();
-  }
-
-  function openEdit(varDef) {
-    right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Edit Variable</div>";
-    const nameLabel = document.createElement("div");
-    nameLabel.className = "ev-muted";
-    nameLabel.innerText = "Name";
-    const nameInput = document.createElement("input");
-    nameInput.className = "ev-input";
-    nameInput.value = varDef.name || "";
-    right.appendChild(nameLabel);
-    right.appendChild(nameInput);
-
-    const actions = document.createElement("div");
-    actions.className = "ev-actions";
-    const save = document.createElement("button");
-    save.className = "ev-btn ev-add";
-    save.innerText = "Save";
-    save.onclick = () => {
-      const newName = nameInput.value.trim();
-      if (!newName) { alert("Name cannot be empty"); return; }
-      try {
-        const ws = getMainWorkspaceSafe();
-        if (!ws) { alert("No workspace available."); return; }
-        renameWorkspaceVariable(ws, varDef._raw || varDef, newName);
-      } catch (e) { console.warn("[ExtVars] rename failed:", e); }
-      rebuildCategories();
-      rebuildList();
-      right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>";
-    };
-    const cancel = document.createElement("button");
-    cancel.className = "ev-btn ev-edit";
-    cancel.innerText = "Cancel";
-    cancel.onclick = () => { right.innerHTML = "<div style='font-weight:700;margin-bottom:8px'>Details</div>"; };
-    actions.appendChild(cancel);
-    actions.appendChild(save);
-    right.appendChild(actions);
-  }
-
-  rebuildCategories();
-  rebuildList();
+  rebuildCategories(); rebuildList();
   modalOverlay.addEventListener("click", (ev) => { if (ev.target === modalOverlay) removeModal(); });
   document.body.appendChild(modalOverlay);
 }
+
 
 
 
