@@ -1,4 +1,4 @@
-// BF6 Extended Variable Manager - final corrected (live workspace-only)
+  // BF6 Extended Variable Manager - final corrected (live workspace-only)
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
 
@@ -207,6 +207,35 @@ function countVariableUsage(ws, varDef) {
   function openModal(){
     removeModal();
     const live = getLiveRegistry();
+    const ws = getMainWorkspaceSafe();
+    const usageCounts = {}; // key = var id
+    if(ws){
+      const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+      for(const cat of CATEGORIES){
+        for(const v of live[cat] || []){
+          let count = 0;
+
+          function traverse(block){
+            if(!block) return;
+            if(block.fields && block.fields.VAR && block.fields.VAR.id === v.id) count++;
+            if(block.inputList && Array.isArray(block.inputList)){
+              block.inputList.forEach(input => {
+                if(input.connection && input.connection.targetBlock){
+                  traverse(input.connection.targetBlock());
+                }
+              });
+            }
+            if(block.nextConnection && block.nextConnection.targetBlock){
+              traverse(block.nextConnection.targetBlock());
+            }
+          }
+
+          allBlocks.forEach(traverse);
+          usageCounts[v.id] = count;
+        }
+      }
+    }
+
     modalOverlay=document.createElement("div"); modalOverlay.className="ev-overlay";
     const modal=document.createElement("div"); modal.className="ev-modal"; modalOverlay.appendChild(modal);
 
@@ -250,7 +279,7 @@ function countVariableUsage(ws, varDef) {
       for(const v of arr){
         const row=document.createElement("div"); row.className="ev-row";
         const leftCol=document.createElement("div"); leftCol.style.display="flex"; leftCol.style.flexDirection="column";
-        const usedCount=(function(){ try{ const ws=getMainWorkspaceSafe(); return ws ? countVariableUsage(ws,v) : 0; }catch(e){return 0;} })();
+        const usedCount = usageCounts[v.id] || 0;
         leftCol.innerHTML=`<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
         const rightCol=document.createElement("div");
