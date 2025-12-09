@@ -1,11 +1,11 @@
-// BF6 Extended Variable Manager - live workspace-only (fixed In Use counter)
+// BF6 Extended Variable Manager - live workspace-only (fixed In Use counter with logging)
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
 
   // defensive plugin handle
   let plugin = null;
   try {
-    if (typeof BF2042Portal !== "undefined" && BF2042Portal.Plugins && typeof BF2042Portal.Plugins.getPlugin === "function") {
+    if (typeof BF2042Portal !== "undefined" && BF2042Portal.Plugins?.getPlugin) {
       plugin = BF2042Portal.Plugins.getPlugin(PLUGIN_ID) || { id: PLUGIN_ID };
     } else {
       plugin = { id: PLUGIN_ID };
@@ -22,8 +22,8 @@
   // ---------- workspace helpers ----------
   function getMainWorkspaceSafe() {
     try {
-      if (typeof _Blockly !== "undefined" && _Blockly && typeof _Blockly.getMainWorkspace === "function") return _Blockly.getMainWorkspace();
-      if (typeof Blockly !== "undefined" && Blockly && typeof Blockly.getMainWorkspace === "function") return Blockly.getMainWorkspace();
+      if (typeof _Blockly !== "undefined" && _Blockly.getMainWorkspace) return _Blockly.getMainWorkspace();
+      if (typeof Blockly !== "undefined" && Blockly.getMainWorkspace) return Blockly.getMainWorkspace();
       if (typeof BF2042Portal !== "undefined" && BF2042Portal.getMainWorkspace) {
         try { return BF2042Portal.getMainWorkspace(); } catch (e) {}
       }
@@ -34,7 +34,7 @@
   function workspaceGetVariableMap(ws) {
     try {
       if (!ws) return null;
-      if (typeof ws.getVariableMap === "function") return ws.getVariableMap();
+      if (ws.getVariableMap) return ws.getVariableMap();
       if (ws.variableMap) return ws.variableMap;
     } catch (e) {}
     return null;
@@ -44,8 +44,8 @@
     try {
       const map = workspaceGetVariableMap(ws);
       if (!map) return [];
-      if (typeof map.getVariables === "function") return map.getVariables();
-      if (typeof map.getAllVariables === "function") return map.getAllVariables();
+      if (map.getVariables) return map.getVariables();
+      if (map.getAllVariables) return map.getAllVariables();
       if (Array.isArray(map.variables)) return map.variables;
     } catch (e) {}
     return [];
@@ -58,15 +58,9 @@
   function createWorkspaceVariable(ws, name, type, id) {
     try {
       const map = workspaceGetVariableMap(ws);
-      if (map && typeof map.createVariable === "function") {
-        try { return map.createVariable(name, type || "", id); } catch (e) { try { return map.createVariable(name, type || ""); } catch(e2){} }
-      }
-      if (ws && typeof ws.createVariable === "function") {
-        try { return ws.createVariable(name, type || "", id); } catch (e) { try { return ws.createVariable(name, type || ""); } catch(e2){} }
-      }
-      if (typeof Blockly !== "undefined" && Blockly.Variables && typeof Blockly.Variables.createVariable === "function") {
-        try { return Blockly.Variables.createVariable(ws, name, type || "", id); } catch(e) {}
-      }
+      if (map?.createVariable) return map.createVariable(name, type || "", id);
+      if (ws?.createVariable) return ws.createVariable(name, type || "", id);
+      if (Blockly?.Variables?.createVariable) return Blockly.Variables.createVariable(ws, name, type || "", id);
     } catch(e) { console.warn("[ExtVars] createWorkspaceVariable error:", e); }
     return null;
   }
@@ -75,10 +69,10 @@
     try {
       const map = workspaceGetVariableMap(ws);
       if (!map) return false;
-      if (typeof map.deleteVariableById === "function") { try { map.deleteVariableById(idOrName); return true; } catch(e){} }
-      if (typeof map.deleteVariable === "function") { try { map.deleteVariable(idOrName); return true; } catch(e){} }
-      if (typeof map.removeVariable === "function") { try { map.removeVariable(idOrName); return true; } catch(e){} }
-      if (map.getVariables && typeof map.getVariables === "function") {
+      if (map.deleteVariableById) { try { map.deleteVariableById(idOrName); return true; } catch(e){} }
+      if (map.deleteVariable) { try { map.deleteVariable(idOrName); return true; } catch(e){} }
+      if (map.removeVariable) { try { map.removeVariable(idOrName); return true; } catch(e){} }
+      if (map.getVariables) {
         const vs = map.getVariables();
         const idx = vs.findIndex(v => getVarId(v) === idOrName || getVarName(v) === idOrName);
         if (idx >= 0) { try { vs.splice(idx,1); return true; } catch(e){} }
@@ -93,10 +87,10 @@
       if (!map) return false;
       let found = null;
       const id = getVarId(varObj);
-      if (id && typeof map.getVariableById === "function") { try { found = map.getVariableById(id); } catch(e){found=null;} }
-      if (!found && typeof map.getVariable === "function") { try { found = map.getVariable(id) || map.getVariable(getVarName(varObj)); } catch(e){found=null;} }
+      if (id && map.getVariableById) { try { found = map.getVariableById(id); } catch(e){found=null;} }
+      if (!found && map.getVariable) { try { found = map.getVariable(id) || map.getVariable(getVarName(varObj)); } catch(e){found=null;} }
       if (found) { try { found.name = newName; return true; } catch(e){} }
-      try { if (varObj && varObj.name !== undefined) { varObj.name = newName; return true; } } catch(e){}
+      if (varObj?.name !== undefined) { varObj.name = newName; return true; }
     } catch(e) { console.warn("[ExtVars] renameWorkspaceVariable error:", e); }
     return false;
   }
@@ -128,12 +122,55 @@
         const id = getVarId(v);
         const name = getVarName(v);
         const type = getVarType(v) || "Global";
-        const cat = (type && typeof type==="string") ? type : "Global";
+        const cat = (typeof type==="string") ? type : "Global";
         if (!live[cat]) live[cat]=[];
         live[cat].push({ id, name, type, _raw:v });
       }
     } catch(e){}
     return live;
+  }
+
+  // ---------- count variable usage ----------
+  function countVariableUsage(ws, varDef) {
+    if (!ws || !varDef?.id) return 0;
+    const targetId = varDef.id;
+    const allBlocks = ws.getAllBlocks?.() || [];
+    const seen = new Set();
+    let totalCount = 0;
+    let scannedBlocks = 0;
+
+    function traverse(block) {
+      if (!block || seen.has(block.id)) return 0;
+      seen.add(block.id);
+      scannedBlocks++;
+      let count = 0;
+
+      if (block.fields?.VAR?.id === targetId) count++;
+
+      // standard inputList
+      if (Array.isArray(block.inputList)) {
+        for (const input of block.inputList) {
+          if (input.connection?.targetBlock) count += traverse(input.connection.targetBlock());
+        }
+      }
+
+      // extended BF2042 inputs
+      if (block.inputs && typeof block.inputs === "object") {
+        for (const key in block.inputs) {
+          const inputBlock = block.inputs[key]?.block;
+          if (inputBlock) count += traverse(inputBlock);
+        }
+      }
+
+      // next block in sequence
+      if (block.nextConnection?.targetBlock) count += traverse(block.nextConnection.targetBlock());
+
+      return count;
+    }
+
+    for (const block of allBlocks) totalCount += traverse(block);
+    console.log(`[ExtVars] Variable "${varDef.name}" scanned ${scannedBlocks} blocks, found ${totalCount} uses`);
+    return totalCount;
   }
 
   // ---------- inject CSS ----------
@@ -171,52 +208,6 @@
     removeModal();
     const ws = getMainWorkspaceSafe();
     const live = getLiveRegistry();
-    const usageCounts = {}; // key = var id
-    const allBlocks = ws?.getAllBlocks ? ws.getAllBlocks() : [];
-
-    // Recursive check for variable usage
-    function blockUsesVariable(block, varId, seen = new Set()) {
-      if (!block || seen.has(block.id)) return false;
-      seen.add(block.id);
-
-      // Check if block is a variable reference
-      if (block.fields && block.fields.VAR && block.fields.VAR.id === varId) return true;
-
-      // Standard inputList
-      if (Array.isArray(block.inputList)) {
-        for (const input of block.inputList) {
-          if (input.connection && input.connection.targetBlock) {
-            if (blockUsesVariable(input.connection.targetBlock(), varId, seen)) return true;
-          }
-        }
-      }
-
-      // Extended BF2042 inputs
-      if (block.inputs && typeof block.inputs === "object") {
-        for (const key in block.inputs) {
-          const inputBlock = block.inputs[key]?.block;
-          if (inputBlock && blockUsesVariable(inputBlock, varId, seen)) return true;
-        }
-      }
-
-      // Next block in sequence
-      if (block.nextConnection && block.nextConnection.targetBlock) {
-        if (blockUsesVariable(block.nextConnection.targetBlock(), varId, seen)) return true;
-      }
-
-      return false;
-    }
-
-    // Populate usageCounts
-    for (const cat of CATEGORIES) {
-      for (const v of live[cat] || []) {
-        let count = 0;
-        for (const block of allBlocks) {
-          if (blockUsesVariable(block, v.id)) count++;
-        }
-        usageCounts[v.id] = count;
-      }
-    }
 
     // ---------- modal UI ----------
     modalOverlay = document.createElement("div"); modalOverlay.className = "ev-overlay";
@@ -275,7 +266,7 @@
       for (const v of arr) {
         const row = document.createElement("div"); row.className = "ev-row";
         const leftCol = document.createElement("div"); leftCol.style.display = "flex"; leftCol.style.flexDirection = "column";
-        const usedCount = usageCounts[v.id] || 0;
+        const usedCount = countVariableUsage(ws, v);
         leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
         const rightCol = document.createElement("div");
@@ -303,8 +294,8 @@
   // ---------- context menu ----------
   function registerContextMenuItem(){
     try{
-      const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry)?_Blockly.ContextMenuRegistry.registry
-               :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry)?Blockly.ContextMenuRegistry.registry:null;
+      const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry?.registry)?_Blockly.ContextMenuRegistry.registry
+               :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry?.registry)?Blockly.ContextMenuRegistry.registry:null;
       if(reg && typeof reg.register==="function"){
         const item={
           id:"manageExtendedVariables",
