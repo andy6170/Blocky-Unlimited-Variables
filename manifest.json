@@ -1,7 +1,7 @@
 {
   "id": "bf-portal-extended-variable-manager",
   "name": "BF6 Unlimited Variables",
-  "version": "0.0.9",
+  "version": "0.0.91",
   "description": "Adds a Variable Manager allowing for unlimited variables",
   "main": "index.js",
   "author": "andy6170"
