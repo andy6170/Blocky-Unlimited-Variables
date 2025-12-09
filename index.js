@@ -206,28 +206,47 @@ function countVariableUsage(ws, varDef) {
     const usageCounts = {}; // key = var id
 if (ws) {
   const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
+
+  function blockUsesVariable(block, varId, varName) {
+    if (!block) return false;
+
+    // check current block
+    if (typeof block.getVarModels === "function") {
+      const vars = block.getVarModels();
+      if (Array.isArray(vars) && vars.some(v => v && v.id === varId)) return true;
+    } else if (typeof block.getVars === "function") {
+      const names = block.getVars();
+      if (Array.isArray(names) && names.includes(varName)) return true;
+    }
+
+    // check inputs recursively
+    if (Array.isArray(block.inputList)) {
+      for (const input of block.inputList) {
+        if (input.connection && input.connection.targetBlock) {
+          if (blockUsesVariable(input.connection.targetBlock(), varId, varName)) return true;
+        }
+      }
+    }
+
+    // check next block
+    if (block.nextConnection && block.nextConnection.targetBlock) {
+      if (blockUsesVariable(block.nextConnection.targetBlock(), varId, varName)) return true;
+    }
+
+    return false;
+  }
+
   for (const cat of CATEGORIES) {
     for (const v of live[cat] || []) {
       let count = 0;
-
       for (const block of allBlocks) {
-        if (typeof block.getVarModels === "function") {
-          const vars = block.getVarModels();
-          if (Array.isArray(vars) && vars.some(varObj => varObj && varObj.id === v.id)) {
-            count++;
-          }
-        } else if (typeof block.getVars === "function") {
-          const names = block.getVars();
-          if (Array.isArray(names) && names.includes(v.name)) {
-            count++;
-          }
-        }
+        if (blockUsesVariable(block, v.id, v.name)) count++;
       }
-
       usageCounts[v.id] = count;
     }
   }
 }
+
 
 
     modalOverlay=document.createElement("div"); modalOverlay.className="ev-overlay";
