@@ -145,22 +145,30 @@ function countVariableUsage(ws, varDef) {
   function traverseBlock(block) {
     if (!block) return;
 
-    // Check if this block references the variable
-    if (block.fields && block.fields.VAR && block.fields.VAR.id === targetId) {
-      count++;
-    }
-
-    // Recursively traverse inputs
+    // 1. Check every field in the block
     if (block.inputList && Array.isArray(block.inputList)) {
       block.inputList.forEach(input => {
-        if (input.connection && input.connection.targetBlock()) {
+        if (input.fieldRow) {
+          input.fieldRow.forEach(field => {
+            // field.getValue might return the variable id in some setups
+            const val = (field.getValue && field.getValue()) || (field.id) || null;
+
+            // Some field objects store the id inside field.getValue()
+            const fieldId = (typeof val === 'string' && val.startsWith('EV_')) ? val : (field.getValue && field.getValue()) || null;
+
+            if (fieldId === targetId) count++;
+          });
+        }
+
+        // Recursively traverse connected blocks
+        if (input.connection && input.connection.targetBlock) {
           traverseBlock(input.connection.targetBlock());
         }
       });
     }
 
-    // Traverse next block in stack
-    if (block.nextConnection && block.nextConnection.targetBlock()) {
+    // 2. Traverse next block in the stack
+    if (block.nextConnection && block.nextConnection.targetBlock) {
       traverseBlock(block.nextConnection.targetBlock());
     }
   }
@@ -170,6 +178,7 @@ function countVariableUsage(ws, varDef) {
 
   return count;
 }
+
 
 
 
