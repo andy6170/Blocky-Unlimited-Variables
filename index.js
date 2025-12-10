@@ -112,8 +112,7 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
                 const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
 
                 if (varObj && varObj.name === newName) {
-                    // Force redraw the block
-                    varField.setValue(val);
+                    varField.setValue(val); // redraw block
                     block.render?.();
                     changed++;
                 }
@@ -123,38 +122,39 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         }
     });
 
-    // 🔹 Workaround: create and delete a temporary variable to force workspace change detection
+    // 🔹 Temporary variable workaround
     try {
         const tmpName = "__TMP__";
         const tmpId = `EV_TMP_${Date.now()}`;
+
+        // Step 1: create a temp variable
         const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
 
         if (tmpVar) {
-            // Fire a create event so Blockly fully registers it
-            if (typeof Blockly !== "undefined" && Blockly.Events) {
-                Blockly.Events.fire(new Blockly.Events.Create(tmpVar));
-            }
-
-            // Delete the temporary variable on the next tick
+            // Step 2: add a small delay to ensure workspace registers it
             setTimeout(() => {
-                deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
+                // Only attempt deletion if the variable still exists
+                const existing = ws.getVariableById ? ws.getVariableById(tmpVar.id) : null;
+                if (existing) {
+                    deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
 
-                // Fire a generic change event to ensure workspace detects the change
-                ws.setDirty?.(true);
-                if (typeof Blockly !== "undefined" && Blockly.Events) {
-                    Blockly.Events.fire(new Blockly.Events.BlockChange(ws));
+                    // Fire a change event to trigger workspace detection
+                    if (typeof Blockly !== "undefined" && Blockly.Events) {
+                        Blockly.Events.fire(new Blockly.Events.BlockChange(ws));
+                    }
+
+                    ws.setDirty?.(true);
                 }
-            }, 0);
+            }, 10); // 10ms delay is usually enough
         }
     } catch(e) {
         console.warn("[ExtVars] Dummy variable workaround failed:", e);
     }
 
-    // Mark workspace dirty in case the timeout hasn’t fired yet
     ws.setDirty?.(true);
-
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
