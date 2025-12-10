@@ -133,44 +133,42 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
-    // ensure saving detects the change
-    forceWorkspaceNudge(ws);
+    // Force save
+    nudgeModBlock(ws);
 }
 
 
 
 /**
- * Workspace "nudge" to force change detection and saving.
+ * Force workspace to detect a real change by nudging the mod block.
+ * This is safer than moving variable blocks.
  */
-function forceWorkspaceNudge(ws) {
+function nudgeModBlock(ws) {
     if (!ws || !ws.getAllBlocks) return;
-    const blocks = ws.getAllBlocks(false);
-    if (!blocks.length) return;
 
-    const target = blocks[0];
+    const allBlocks = ws.getAllBlocks(false);
+    if (!allBlocks.length) return;
+
+    // Find the mod block — replace 'modBlock' with the actual type if different
+    const modBlock = allBlocks.find(b => b.type === "modBlock");
+    if (!modBlock) return;
 
     try {
-        // 1. Move block slightly to trigger internal change
-        target.moveBy(1, 0);
-        target.moveBy(-1, 0);
+        // tiny movement up/down (or left/right)
+        modBlock.moveBy(0, 1);
+        modBlock.moveBy(0, -1);
 
-        // 2. Render
-        target.render(false);
+        modBlock.render(false);
 
-        // 3. Fire a real Blockly change event
-        if (typeof Blockly !== "undefined" && Blockly.Events && Blockly.Events.BlockChange) {
-            Blockly.Events.fire(new Blockly.Events.BlockChange(
-                target, "field", null, null, null
-            ));
-        } else if (ws.fireChangeEvent) {
-            ws.fireChangeEvent();
-        }
+        // mark workspace as dirty (BF2042 save trigger)
+        ws.setDirty?.(true);
 
-        console.log("[ExtVars] Nudge triggered save change.");
+        console.log("[ExtVars] Mod block nudged to trigger save.");
     } catch (e) {
-        console.warn("[ExtVars] Nudge failed:", e);
+        console.warn("[ExtVars] Failed to nudge mod block:", e);
     }
 }
+
 
 
 
