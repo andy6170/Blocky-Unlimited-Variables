@@ -447,12 +447,28 @@ function rebuildList() {
   function initialize(){ registerContextMenuItem(); if(plugin) plugin.openManager=openModal; console.info("[ExtVars] Live Extended Variable Manager initialized (workspace-only)."); }
   setTimeout(initialize,900);
 
-  // ---------- expose helpers for console testing ----------
-if (typeof window !== "undefined") {
-    window._getMainWorkspaceSafe = getMainWorkspaceSafe;
-    window._updateBlocksForVariableRename = updateBlocksForVariableRename;
-    console.info("[ExtVars] Console helpers exposed: _getMainWorkspaceSafe(), _updateBlocksForVariableRename(oldName, newName, ws)");
+// ---------- safe export of console helpers ----------
+try {
+    if (typeof window !== "undefined") {
+        window._getMainWorkspaceSafe = (...args) => {
+            try { return getMainWorkspaceSafe(...args); }
+            catch(e){ console.warn("getMainWorkspaceSafe failed", e); return null; }
+        };
+
+        window._updateBlocksForVariableRename = (...args) => {
+            try { return updateBlocksForVariableRename(...args); }
+            catch(e){ console.warn("updateBlocksForVariableRename failed", e); }
+        };
+
+        console.info("[ExtVars] Console helpers ACTIVE:",
+            "_getMainWorkspaceSafe",
+            "_updateBlocksForVariableRename"
+        );
+    }
+} catch (err) {
+    console.warn("[ExtVars] Failed exporting console helpers:", err);
 }
+
 
 
 })();
