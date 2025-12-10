@@ -111,7 +111,6 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
                 const val = varField.getValue?.();
                 const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
                 if (varObj && varObj.name === newName) {
-                    // Force redraw
                     varField.setValue(val);
                     block.render?.();
                     changed++;
@@ -122,38 +121,42 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         }
     });
 
-    // 🔹 Workaround: create a temporary variable to force workspace change detection
+    // Create a temporary variable to trigger change detection
     try {
         const tmpName = "__TMP__" + Date.now();
         const tmpVar = createWorkspaceVariable(ws, tmpName, "Global");
 
         if (tmpVar) {
-            // Fire a "create variable" event
+            // Fire a create event
             if (typeof Blockly !== "undefined" && Blockly.Events) {
                 Blockly.Events.fire(new Blockly.Events.Create(tmpVar));
             }
 
-            // Delay deletion slightly to ensure workspace registers the variable
-            setTimeout(() => {
-                deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
+            // Poll until the variable exists in the workspace before deleting
+            const interval = setInterval(() => {
+                const registeredVar = ws.getVariableById?.(tmpVar.id);
+                if (registeredVar) {
+                    deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
 
-                // Fire a "delete variable" event
-                if (typeof Blockly !== "undefined" && Blockly.Events) {
-                    Blockly.Events.fire(new Blockly.Events.Delete(tmpVar));
+                    // Fire delete event
+                    if (typeof Blockly !== "undefined" && Blockly.Events) {
+                        Blockly.Events.fire(new Blockly.Events.Delete(tmpVar));
+                    }
+
+                    ws.setDirty?.(true); // mark dirty
+                    clearInterval(interval);
                 }
-
-                ws.setDirty?.(true); // mark workspace dirty after deletion
-            }, 0);
+            }, 5); // check every 5ms
         }
     } catch(e) {
         console.warn("[ExtVars] Dummy variable workaround failed:", e);
     }
 
-    // Backup dirty flag in case setTimeout hasn't run yet
     ws.setDirty?.(true);
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
