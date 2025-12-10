@@ -95,93 +95,71 @@
     return false;
   }
 
+
+
+
+
+  
 // ---------- update blocks after rename ----------
-/**
- * Update blocks that reference the renamed variable
- */
 function updateBlocksForVariableRename(oldName, newName, ws) {
     if (!ws) return;
 
-    const map = ws.getVariableMap();
-    if (!map) return;
-
+    const allBlocks = ws.getAllBlocks(false);
     let changed = 0;
 
-    const varObj = map.getVariable(newName);
-    if (!varObj) {
-        console.warn("[ExtVars] Variable not found after rename:", newName);
-        return;
-    }
+    allBlocks.forEach(block => {
+        if (!block) return;
 
-    const varId = varObj.getId();
-    const allBlocks = ws.getAllBlocks(false);
-
-    for (const block of allBlocks) {
-        if (!block) continue;
-
-        const field = block.getField("VAR");
-        if (!field) continue;
+        const varField = block.getField && block.getField("VAR");
+        if (!varField) return;
 
         try {
-            const currentVarId = field.getValue?.();
-            const referenced = ws.getVariableById(currentVarId);
+            const val = varField.getValue?.();            // old variable ID
+            const varObj = ws.getVariableById?.(val);     // lookup variable from ID
 
-            if (!referenced) continue;
-            if (referenced.name !== newName) continue;
+            if (varObj && varObj.name === newName) {
+                // ✔ force field to refresh by reassigning the SAME ID
+                varField.setValue(val);
 
-            // Force update / redraw
-            field.setValue(varId);
-            block.render?.();
-            changed++;
+                // ✔ force block to redraw
+                block.render?.();
 
+                changed++;
+            }
         } catch (e) {
-            console.warn("[ExtVars] Failed updating block field", e);
+            console.warn("[ExtVars] Block update error:", e);
         }
-    }
+    });
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
-    // IMPORTANT — tell the workspace something changed
-    forceWorkspaceChange(ws);
+    // ✔ ensure saving detects the change
+    forceWorkspaceNudge(ws);
 }
-
 
 
 /**
- * Force Blockly to detect a "change" so saving works.
- * 
- * Moves a harmless block by 1px and back, triggering real Blockly events:
- *   - BLOCK_MOVE
- *   - workspace.setDirty(true)
+ * Workspace "nudge" to force change detection and saving.
  */
-function forceWorkspaceChange(ws) {
-    if (!ws) return;
+function forceWorkspaceNudge(ws) {
+    const blocks = ws.getAllBlocks(false);
+    if (!blocks.length) return;
 
-    const allBlocks = ws.getAllBlocks(false);
-    if (!allBlocks.length) return;
-
-    // Prefer the required mod block if it exists
-    const target =
-        allBlocks.find(b => b.type === "math_modulo") || allBlocks[0];
+    const target = blocks[0]; // safest pick
 
     try {
-        const xy = target.getRelativeToSurfaceXY();
-
-        // Nudge right 1px
         target.moveBy(1, 0);
-        // Nudge back to original position
         target.moveBy(-1, 0);
 
         target.render(false);
-
         ws.setDirty?.(true);
 
-        console.log("[ExtVars] Workspace nudge change fired.");
-
+        console.log("[ExtVars] Nudge triggered save change.");
     } catch (e) {
-        console.warn("[ExtVars] Nudge workaround failed:", e);
+        console.warn("[ExtVars] Nudge failed:", e);
     }
 }
+
 
 
 
