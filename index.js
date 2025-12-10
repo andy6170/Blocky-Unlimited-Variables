@@ -95,6 +95,34 @@
     return false;
   }
 
+  // ---------- update blocks after rename ----------
+function updateBlocksForVariableRename(oldName, newName, ws) {
+    if (!ws) return;
+    const allBlocks = ws.getAllBlocks(false);
+    for (const block of allBlocks) {
+        if (!block) continue;
+
+        // variableReferenceBlock
+        if (block.type === "variableReferenceBlock") {
+            const text = block.toString?.().trim() || "";
+            if (text === `Global Variable ${oldName}`) {
+                const varField = block.getField("VAR");
+                if (varField) varField.setValue(newName);
+            }
+        }
+
+        // GetVariable / SetVariable
+        if (block.type === "GetVariable" || block.type === "SetVariable") {
+            const text = block.toString?.().trim() || "";
+            if (text.startsWith(`${block.type} Global Variable ${oldName}`)) {
+                const varField = block.getField("VAR");
+                if (varField) varField.setValue(newName);
+            }
+        }
+    }
+}
+
+
   function makeNextSequentialIdFromWorkspace() {
     try {
       const ws = getMainWorkspaceSafe();
@@ -354,12 +382,16 @@ function rebuildList() {
         editBtn.style.marginRight = "6px"; 
         editBtn.innerText = "Edit"; 
         editBtn.onclick = () => {
-            const newName = prompt("Enter new name for variable:", v.name);
-            if (!newName) return;
-            renameWorkspaceVariable(ws, v._raw, newName);
-            rebuildCategories(); 
-            rebuildList();
-        };
+    const newName = prompt("Enter new name for variable:", v.name);
+    if (!newName) return;
+    const oldName = v.name;
+
+    renameWorkspaceVariable(ws, v._raw, newName);
+    updateBlocksForVariableRename(oldName, newName, ws); // <- apply the rename to blocks
+    rebuildCategories();
+    rebuildList();
+};
+
 
         const delBtn = document.createElement("button"); 
         delBtn.className = "ev-btn ev-del"; 
