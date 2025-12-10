@@ -112,7 +112,8 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
                 const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
 
                 if (varObj && varObj.name === newName) {
-                    varField.setValue(val); // redraw block
+                    // Refresh the block's field and render
+                    varField.setValue(val);
                     block.render?.();
                     changed++;
                 }
@@ -122,38 +123,27 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         }
     });
 
-    // 🔹 Temporary variable workaround
+    // 🔹 Fire a synthetic workspace change event to trigger save detection
     try {
-        const tmpName = "__TMP__";
-        const tmpId = `EV_TMP_${Date.now()}`;
-
-        // Step 1: create a temp variable
-        const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
-
-        if (tmpVar) {
-            // Step 2: add a small delay to ensure workspace registers it
-            setTimeout(() => {
-                // Only attempt deletion if the variable still exists
-                const existing = ws.getVariableById ? ws.getVariableById(tmpVar.id) : null;
-                if (existing) {
-                    deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
-
-                    // Fire a change event to trigger workspace detection
-                    if (typeof Blockly !== "undefined" && Blockly.Events) {
-                        Blockly.Events.fire(new Blockly.Events.BlockChange(ws));
-                    }
-
-                    ws.setDirty?.(true);
-                }
-            }, 10); // 10ms delay is usually enough
+        if (typeof Blockly !== "undefined" && Blockly.Events && Blockly.Events.BlockChange) {
+            // Using a workspace-level event to mark the workspace as "dirty"
+            Blockly.Events.fire(new Blockly.Events.BlockChange(
+                ws,
+                null,       // block (null for workspace-level event)
+                "field",    // event type
+                "__dummy__",// field name
+                null,       // old value
+                "__dummy__" // new value
+            ));
         }
     } catch(e) {
-        console.warn("[ExtVars] Dummy variable workaround failed:", e);
+        console.warn("[ExtVars] Synthetic event workaround failed:", e);
     }
 
     ws.setDirty?.(true);
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
