@@ -132,7 +132,10 @@
 
   // ---------- count variable usage ----------
  function countVariableUsage(ws, varDef) {
-  if (!ws || !varDef) return 0;
+  if (!ws || !varDef) {
+    console.log("[ExtVars] ERROR: Missing ws or varDef");
+    return 0;
+  }
 
   const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
   const targetName = varDef.name;
@@ -144,51 +147,55 @@
 
   let count = 0;
 
-  console.groupCollapsed(`[ExtVars] DEBUG for "${targetName}"`);
+  console.log("======================================================");
+  console.log(`[ExtVars] FULL DEBUG START for variable: "${targetName}"`);
+  console.log("======================================================");
+
   for (const block of allBlocks) {
     let txt = "";
-    try { txt = block.toString?.() || ""; } catch (e) {}
+    try { txt = block.toString?.() || ""; } catch {}
 
-    console.log("BLOCK:", {
-      id: block.id,
-      type: block.type,
-      toString: txt
-    });
+    console.log("• BLOCK FOUND:");
+    console.log("  id:   ", block.id);
+    console.log("  type: ", block.type);
+    console.log("  text: ", JSON.stringify(txt));
 
-    // ---- BLOCK TYPE: variableReferenceBlock ----
+    // ----- Count rules -----
+
     if (block.type === "variableReferenceBlock") {
       if (txt.trim() === refText) {
         count++;
-        console.log("→ MATCH: variableReferenceBlock exact match");
+        console.log("  → MATCHED: variableReferenceBlock EXACT");
       }
       continue;
     }
 
-    // ---- BLOCK TYPE: GetVariable ----
     if (block.type === "GetVariable") {
       if (txt.startsWith(getPrefix)) {
         count++;
-        console.log("→ MATCH: GetVariable prefix");
+        console.log("  → MATCHED: GetVariable PREFIX");
       }
       continue;
     }
 
-    // ---- BLOCK TYPE: SetVariable ----
     if (block.type === "SetVariable") {
       if (txt.startsWith(setPrefix)) {
         count++;
-        console.log("→ MATCH: SetVariable prefix");
+        console.log("  → MATCHED: SetVariable PREFIX");
       }
       continue;
     }
 
-    // No other blocks should count!
+    console.log("  (no match)");
   }
-  console.groupEnd();
 
+  console.log("======================================================");
   console.log(`[ExtVars] FINAL COUNT for "${targetName}": ${count}`);
+  console.log("======================================================");
+
   return count;
 }
+
 
 
 
