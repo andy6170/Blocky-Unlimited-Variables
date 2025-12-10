@@ -133,78 +133,42 @@
   // ---------- count variable usage ----------
   function countVariableUsage(ws, varDef) {
   if (!ws || !varDef) return 0;
+
   const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-    
-    console.log("===== BLOCK STRUCTURE DUMP =====");
-for (const block of allBlocks) {
-  try {
-    console.log({
-      id: block.id,
-      type: block.type,
-      fields: block.fields,
-      inputList: block.inputList,
-      inputs: block.inputs,
-      toString: block.toString?.()
-    });
-  } catch(e) {
-    console.warn("Error inspecting block:", e);
-  }
-}
-console.log("===== END BLOCK DUMP =====");
+  const varName = varDef.name;
+  const varType = varDef.type || "Global";
 
-  const targetId = varDef.id;
-  const targetName = varDef.name;
+  // Pattern like: "Global Variable test"
+  const refText = `${varType} Variable ${varName}`;
+
   let count = 0;
-  const seenBlocks = new Set();
-
-  function traverse(block) {
-    if (!block || seenBlocks.has(block.id)) return;
-    seenBlocks.add(block.id);
-
-    // 1️⃣ Direct variable reference block
-    if (block.type === "variableReferenceBlock" && block.fields?.VAR) {
-      if ((block.fields.VAR.id && block.fields.VAR.id === targetId) ||
-          (block.fields.VAR.name && block.fields.VAR.name === targetName)) {
-        count++;
-      }
-    }
-
-    // 2️⃣ GetVariable / SetVariable blocks
-    if ((block.type === "GetVariable" || block.type === "SetVariable") && block.inputs) {
-      for (const key in block.inputs) {
-        const inputBlock = block.inputs[key]?.block;
-        if (inputBlock) traverse(inputBlock);
-      }
-    }
-
-    // 3️⃣ Generic field check
-    if (typeof block.getFieldValue === "function") {
-      const val = block.getFieldValue("VAR");
-      if (val && val === targetName) count++;
-    }
-
-    // 4️⃣ Recurse into inputList (standard Blockly)
-    if (Array.isArray(block.inputList)) {
-      for (const input of block.inputList) {
-        if (input.connection && input.connection.targetBlock) {
-          traverse(input.connection.targetBlock());
-        }
-      }
-    }
-
-    // 5️⃣ Next block in sequence
-    if (block.nextConnection && block.nextConnection.targetBlock) {
-      traverse(block.nextConnection.targetBlock());
-    }
-  }
 
   for (const block of allBlocks) {
-    traverse(block);
+    let txt = "";
+    try { txt = block.toString?.() || ""; } catch (e) {}
+
+    if (!txt) continue;
+
+    // direct variableReferenceBlock
+    if (block.type === "variableReferenceBlock") {
+      if (txt === refText) count++;
+      continue;
+    }
+
+    // GetVariable / SetVariable
+    if (block.type === "GetVariable" || block.type === "SetVariable") {
+      if (txt.includes(refText)) count++;
+      continue;
+    }
+
+    // fallback: any block containing type + name text
+    if (txt.includes(refText)) count++;
   }
 
-  console.log(`[ExtVars] Variable "${targetName}" scanned ${allBlocks.length} blocks, found ${count} uses`);
+  console.log(`[ExtVars] "${varName}" usage: ${count}`);
   return count;
 }
+
 
 
   // ---------- inject CSS ----------
