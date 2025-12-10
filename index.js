@@ -134,7 +134,10 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
     // Ensure saving detects the change
-    forceWorkspaceNudge(ws);
+    // pick the first block safely
+const target = ws.getAllBlocks(false)[0];
+if (target) nudgeBlockForSave(ws, target);
+
 }
 
 
@@ -145,35 +148,29 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 /**
  * Safely nudge an existing block to force workspace change detection.
  */
-function forceWorkspaceNudge(ws) {
-    if (!ws) return;
-
-    const blocks = ws.getAllBlocks(false);
-    if (!blocks.length) return;
-
-    // Pick a "safe" block — ideally the first mod block if available
-    const target = blocks.find(b => b.type === "modBlock") || blocks[0];
-
-    if (!target) return;
-
+function nudgeBlockForSave(ws, block) {
+    if (!ws || !block) return;
     try {
-        // Nudge asynchronously to let workspace process
-        setTimeout(() => {
-            try {
-                target.moveBy(1, 0);
-                target.moveBy(-1, 0);
-                target.render?.();
-                ws.setDirty?.(true);
+        // Capture the original position
+        const oldXY = block.getRelativeToSurfaceXY();
 
-                console.log("[ExtVars] Mod block nudged to trigger save.");
-            } catch(e) {
-                console.warn("[ExtVars] Nudge failed:", e);
-            }
-        }, 50); // small delay avoids race conditions
-    } catch(e) {
-        console.warn("[ExtVars] Force nudge failed:", e);
+        // Move + fire event to imitate user drag
+        Blockly.Events.setGroup("extvars_rename_nudge");
+
+        block.moveBy(1, 0); // small visual nudge
+        Blockly.Events.fire(new Blockly.Events.Move(block, oldXY, block.getRelativeToSurfaceXY()));
+
+        block.moveBy(-1, 0); // move back
+        Blockly.Events.fire(new Blockly.Events.Move(block, block.getRelativeToSurfaceXY(), oldXY));
+
+        Blockly.Events.setGroup(false);
+
+        console.log("[ExtVars] Block nudge fired to trigger save.");
+    } catch (e) {
+        console.warn("[ExtVars] Block nudge failed:", e);
     }
 }
+
 
 
 
