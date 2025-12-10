@@ -130,71 +130,85 @@
     return live;
   }
 
-  // ---------- count variable usage ----------
- function countVariableUsage(ws, varDef) {
-  if (!ws || !varDef) {
-    console.log("[ExtVars] ERROR: Missing ws or varDef");
-    return 0;
-  }
+ // Helper: check if a block is nested inside another block's inputs
+function isNestedInside(block, parent) {
+    if (!parent || !parent.inputList) return false;
 
-  const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-  const targetName = varDef.name;
-  const targetType = varDef.type || "Global";
+    for (const input of parent.inputList) {
+        if (!input.connection) continue;
+        const target = input.connection.targetBlock_;
+        if (!target) continue;
 
-  const refText = `${targetType} Variable ${targetName}`;
-  const getPrefix = `GetVariable ${refText}`;
-  const setPrefix = `SetVariable ${refText}`;
-
-  let count = 0;
-
-  console.log("======================================================");
-  console.log(`[ExtVars] FULL DEBUG START for variable: "${targetName}"`);
-  console.log("======================================================");
-
-  for (const block of allBlocks) {
-    let txt = "";
-    try { txt = block.toString?.() || ""; } catch {}
-
-    console.log("• BLOCK FOUND:");
-    console.log("  id:   ", block.id);
-    console.log("  type: ", block.type);
-    console.log("  text: ", JSON.stringify(txt));
-
-    // ----- Count rules -----
-
-    if (block.type === "variableReferenceBlock") {
-      if (txt.trim() === refText) {
-        count++;
-        console.log("  → MATCHED: variableReferenceBlock EXACT");
-      }
-      continue;
+        if (target === block) return true;
     }
 
-    if (block.type === "GetVariable") {
-      if (txt.startsWith(getPrefix)) {
-        count++;
-        console.log("  → MATCHED: GetVariable PREFIX");
-      }
-      continue;
-    }
-
-    if (block.type === "SetVariable") {
-      if (txt.startsWith(setPrefix)) {
-        count++;
-        console.log("  → MATCHED: SetVariable PREFIX");
-      }
-      continue;
-    }
-
-    console.log("  (no match)");
-  }
-
-  console.log("======================================================");
-  console.log(`[ExtVars] FINAL COUNT for "${targetName}": ${count}`);
-  console.log("======================================================");
-
-  return count;
+    return false;
 }
+
+
+// Main counter function
+function countVariableUsage(variableName) {
+    const ws = Blockly.getMainWorkspace();
+    const allBlocks = ws.getAllBlocks(false);
+
+    console.log("=====================================================");
+    console.log(`[ExtVars] BEGIN USAGE SCAN for "${variableName}"`);
+    console.log("=====================================================");
+
+    let count = 0;
+
+    for (const block of allBlocks) {
+        const type = block.type;
+        const text = block.toString().trim();
+
+        console.log(`• CHECK BLOCK: [${type}] "${text}" (id=${block.id})`);
+
+        // -------------------------------------------------------------------
+        // COUNT GETVARIABLE / SETVARIABLE (1 each)
+        // -------------------------------------------------------------------
+        if (
+            (type === "GetVariable" || type === "SetVariable") &&
+            text.startsWith(`${type} Global Variable ${variableName}`)
+        ) {
+            count++;
+            console.log(`  → MATCH: counted ${type}`);
+            continue;
+        }
+
+        // -------------------------------------------------------------------
+        // COUNT standalone variableReferenceBlock
+        // -------------------------------------------------------------------
+        if (
+            type === "variableReferenceBlock" &&
+            text === `Global Variable ${variableName}`
+        ) {
+            // Determine if block is nested inside any other block
+            let nested = false;
+
+            for (const parent of allBlocks) {
+                if (parent === block) continue;
+                if (isNestedInside(block, parent)) {
+                    nested = true;
+                    break;
+                }
+            }
+
+            if (!nested) {
+                count++;
+                console.log("  → MATCH: counted standalone variableReferenceBlock");
+            } else {
+                console.log("  → SKIPPED: nested reference block");
+            }
+        }
+    }
+
+    console.log("=====================================================");
+    console.log(`[ExtVars] FINAL COUNT for "${variableName}": ${count}`);
+    console.log("=====================================================");
+
+    return count;
+}
+
 
 
 
