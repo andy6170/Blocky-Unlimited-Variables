@@ -152,17 +152,23 @@ function forceWorkspaceNudge(ws) {
         temp.initSvg();
         temp.render();
 
-        // Add it to the workspace so Blockly sees it
+        // Add it to the workspace
         ws.addTopBlock(temp);
 
-        // Immediately delete it to trigger a real change event
-        temp.dispose(true);
-
-        console.log("[ExtVars] Dummy block add/delete triggered save change.");
+        // Dispose it asynchronously to avoid workspace freeze
+        setTimeout(() => {
+            try {
+                temp.dispose(true);
+                console.log("[ExtVars] Dummy block add/delete triggered save change.");
+            } catch (e) {
+                console.warn("[ExtVars] Async nudge failed:", e);
+            }
+        }, 50);
     } catch (e) {
         console.warn("[ExtVars] Nudge failed:", e);
     }
 }
+
 
 
 
