@@ -104,23 +104,24 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
         // variableReferenceBlock
         if (block.type === "variableReferenceBlock") {
-            const text = block.toString?.().trim() || "";
-            if (text === `Global Variable ${oldName}`) {
-                const varField = block.getField("VAR");
-                if (varField) varField.setValue(newName);
+            const variable = block.getVariable?.();
+            if (variable && variable.name === oldName) {
+                variable.name = newName;
+                block.render?.();
             }
         }
 
         // GetVariable / SetVariable
         if (block.type === "GetVariable" || block.type === "SetVariable") {
-            const text = block.toString?.().trim() || "";
-            if (text.startsWith(`${block.type} Global Variable ${oldName}`)) {
-                const varField = block.getField("VAR");
-                if (varField) varField.setValue(newName);
+            const variable = block.getVariable?.();
+            if (variable && variable.name === oldName) {
+                variable.name = newName;
+                block.render?.();
             }
         }
     }
 }
+
 
 
   function makeNextSequentialIdFromWorkspace() {
