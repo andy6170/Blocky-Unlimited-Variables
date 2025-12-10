@@ -409,72 +409,77 @@
   }
 
   // ---------- context menu injection ----------
-  function registerContextMenuItem(){
-    try{
-      const reg =
-        (typeof _Blockly!=="undefined" && _Blockly.ContextMenuRegistry?.registry)
-          ? _Blockly.ContextMenuRegistry.registry
-          : (typeof Blockly!=="undefined" && Blockly.ContextMenuRegistry?.registry)
-            ? Blockly.ContextMenuRegistry.registry
-            : null;
+function registerContextMenuItem() {
+    function tryRegister() {
+        const reg =
+            (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry?.registry)
+                ? _Blockly.ContextMenuRegistry.registry
+                : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry?.registry)
+                    ? Blockly.ContextMenuRegistry.registry
+                    : null;
 
-      if(reg && typeof reg.register==="function"){
-        const item = {
-          id:"manageExtendedVariables",
-          displayText:"Manage Variables",
-          preconditionFn:()=> "enabled",
-          callback:()=>openModal(),
-          scopeType:
-            (typeof _Blockly!=="undefined" && _Blockly.ContextMenuRegistry)
-              ? _Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
-              : (typeof Blockly!=="undefined" && Blockly.ContextMenuRegistry)
-                ? Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
-                : null,
-          weight:98
-        };
-
-        try { if (reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); } catch(e){}
-        reg.register(item);
-        console.log("[ExtVars] Registered via ContextMenuRegistry");
-        return;
-      }
-    } catch(e){
-      console.warn("[ExtVars] ContextMenuRegistry registration failed:", e);
+        if (reg && typeof reg.register === "function") {
+            const item = {
+                id: "manageExtendedVariables",
+                displayText: "Manage Variables",
+                preconditionFn: () => "enabled",
+                callback: () => openModal(),
+                scopeType:
+                    (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry)
+                        ? _Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
+                        : (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry)
+                            ? Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
+                            : null,
+                weight: 98
+            };
+            try { if (reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); } catch (e) {}
+            reg.register(item);
+            console.log("[ExtVars] Registered via ContextMenuRegistry");
+            return true;
+        }
+        return false;
     }
 
-    // fallback to DOM patch
-    (function domFallback(){
-      document.addEventListener("contextmenu",()=> {
-        setTimeout(()=>{
-          const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
-          if(!menu) return;
-          if(menu.querySelector("[data-extvars]")) return;
+    // Retry until it succeeds
+    function attempt() {
+        if (!tryRegister()) requestAnimationFrame(attempt);
+    }
+    attempt();
 
-          const el=document.createElement("div");
-          el.setAttribute("data-extvars","1");
-          el.style.padding="6px 10px";
-          el.style.cursor="pointer";
-          el.style.color="#e9eef2";
-          el.textContent="Manage Variables";
+    // Fallback to DOM patch for old menus
+    (function domFallback() {
+        document.addEventListener("contextmenu", () => {
+            setTimeout(() => {
+                const menu = document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
+                if (!menu) return;
+                if (menu.querySelector("[data-extvars]")) return;
 
-          el.addEventListener("click",()=>{
-            openModal();
-            try { menu.style.display="none"; } catch(e){}
-          });
+                const el = document.createElement("div");
+                el.setAttribute("data-extvars", "1");
+                el.style.padding = "6px 10px";
+                el.style.cursor = "pointer";
+                el.style.color = "#e9eef2";
+                el.textContent = "Manage Variables";
 
-          menu.appendChild(el);
-        },40);
-      });
+                el.addEventListener("click", () => {
+                    openModal();
+                    try { menu.style.display = "none"; } catch (e) { }
+                });
+
+                menu.appendChild(el);
+            }, 40);
+        });
     })();
-  }
+}
 
-  function initialize(){
+function initialize() {
     registerContextMenuItem();
-    if(plugin) plugin.openManager = openModal;
+    if (plugin) plugin.openManager = openModal;
     console.info("[ExtVars] Extended Variable Manager initialized.");
-  }
+}
 
-  setTimeout(initialize, 900);
+requestAnimationFrame(initialize);
+
 
   // ---------- export for console ----------
   window._getMainWorkspaceSafe = getMainWorkspaceSafe;
