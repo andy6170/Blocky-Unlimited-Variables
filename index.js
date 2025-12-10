@@ -99,6 +99,9 @@
 
 
 
+
+
+  
   
 // ---------- update blocks after rename ----------
 function updateBlocksForVariableRename(oldName, newName, ws) {
@@ -133,56 +136,26 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
-    // Ensure saving detects the change
-    // pick the first block safely
-const target = ws.getAllBlocks(false)[0];
-if (target) nudgeBlockForSave(ws, target);
-
-}
-
-
-/**
- * Workspace "nudge" to force change detection and saving
- * by adding and immediately deleting a dummy Number block.
- */
-/**
- * Safely nudge an existing block to force workspace change detection.
- */
-function nudgeBlockForSave(ws, block) {
-    if (!ws || !block) return;
+    // -------------------------------
+    // Force workspace to detect a change by adding & removing a dummy variable
+    // -------------------------------
     try {
-        // Capture the original position
-        const oldXY = block.getRelativeToSurfaceXY();
+        const dummyName = "__EXTVARS_DUMMY__";
+        const dummyId = "EXTVARS_DUMMY_" + Date.now(); // unique ID
 
-        // Move + fire event to imitate user drag
-        Blockly.Events.setGroup("extvars_rename_nudge");
+        // Add dummy variable
+        const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
 
-        block.moveBy(1, 0); // small visual nudge
-        Blockly.Events.fire(new Blockly.Events.Move(block, oldXY, block.getRelativeToSurfaceXY()));
+        // Immediately delete it
+        if (dummyVar) {
+            deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
+        }
 
-        block.moveBy(-1, 0); // move back
-        Blockly.Events.fire(new Blockly.Events.Move(block, block.getRelativeToSurfaceXY(), oldXY));
-
-        Blockly.Events.setGroup(false);
-
-        console.log("[ExtVars] Block nudge fired to trigger save.");
+        console.log("[ExtVars] Dummy variable added & deleted to trigger save.");
     } catch (e) {
-        console.warn("[ExtVars] Block nudge failed:", e);
+        console.warn("[ExtVars] Dummy variable trick failed:", e);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
