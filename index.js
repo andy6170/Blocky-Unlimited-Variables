@@ -142,22 +142,40 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
  * Workspace "nudge" to force change detection and saving
  * by adding and immediately deleting a dummy Number block.
  */
+/**
+ * Safely nudge an existing block to force workspace change detection.
+ */
 function forceWorkspaceNudge(ws) {
     if (!ws) return;
 
+    const blocks = ws.getAllBlocks(false);
+    if (!blocks.length) return;
+
+    // Pick a "safe" block — ideally the first mod block if available
+    const target = blocks.find(b => b.type === "modBlock") || blocks[0];
+
+    if (!target) return;
+
     try {
-        // Create a temporary Number block
-        const temp = ws.newBlock("Number");
-        temp.setFieldValue(0, "NUM");
-        temp.initSvg();
-        temp.render();
+        // Nudge asynchronously to let workspace process
+        setTimeout(() => {
+            try {
+                target.moveBy(1, 0);
+                target.moveBy(-1, 0);
+                target.render?.();
+                ws.setDirty?.(true);
 
-        // Add it to the workspace
-        ws.addTopBlock(temp);
-
-        // Dispose it asynchronously to avoid workspace freeze
+                console.log("[ExtVars] Mod block nudged to trigger save.");
+            } catch(e) {
+                console.warn("[ExtVars] Nudge failed:", e);
+            }
+        }, 50); // small delay avoids race conditions
+    } catch(e) {
+        console.warn("[ExtVars] Force nudge failed:", e);
     }
 }
+
+
 
 
 
