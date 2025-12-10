@@ -138,7 +138,6 @@
   const varName = varDef.name;
   const varType = varDef.type || "Global";
 
-  // Pattern like: "Global Variable test"
   const refText = `${varType} Variable ${varName}`;
 
   let count = 0;
@@ -149,25 +148,32 @@
 
     if (!txt) continue;
 
-    // direct variableReferenceBlock
-    if (block.type === "variableReferenceBlock") {
-      if (txt === refText) count++;
-      continue;
-    }
+    switch (block.type) {
+      case "variableReferenceBlock":
+        // These blocks render exactly "Global Variable test"
+        if (txt === refText) count++;
+        break;
 
-    // GetVariable / SetVariable
-    if (block.type === "GetVariable" || block.type === "SetVariable") {
-      if (txt.includes(refText)) count++;
-      continue;
-    }
+      case "GetVariable":
+        // Must START with "GetVariable Global Variable test"
+        if (txt.startsWith(`GetVariable ${refText}`)) count++;
+        break;
 
-    // fallback: any block containing type + name text
-    if (txt.includes(refText)) count++;
+      case "SetVariable":
+        // Must START with "SetVariable Global Variable test"
+        if (txt.startsWith(`SetVariable ${refText}`)) count++;
+        break;
+
+      default:
+        // do NOT count variable mentions in child blocks or unrelated strings
+        break;
+    }
   }
 
   console.log(`[ExtVars] "${varName}" usage: ${count}`);
   return count;
 }
+
 
 
 
