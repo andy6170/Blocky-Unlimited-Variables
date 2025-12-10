@@ -204,7 +204,7 @@ if (block.type === "variableReferenceBlock") {
     const style = document.createElement("style");
     style.textContent = `
       .ev-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:999999}
-      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#0f0f10;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
+      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#1a1a1a;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
       .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
       .ev-cats{width:240px;background:#121214;border-radius:8px;padding:10px;overflow-y:auto}
       .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:transparent;color:#e9eef2;margin-bottom:6px}
@@ -216,7 +216,7 @@ if (block.type === "variableReferenceBlock") {
       .ev-add{background:#2ca72c}
       .ev-edit{background:#2b2b2b}
       .ev-del{background:#a73232}
-      .ev-muted{color:#9aa1a8;font-size:12px}
+      .ev-muted{color:#cdcdcd;font-size:14px}
       .ev-details{width:320px;background:#121214;border-radius:8px;padding:10px;overflow:auto}
       .ev-input{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#0b0b0c;color:#e9eef2;margin-bottom:8px}
       .ev-actions{display:flex;justify-content:flex-end;margin-top:10px;gap:8px}
@@ -241,7 +241,7 @@ if (block.type === "variableReferenceBlock") {
 
     // header
     const top = document.createElement("div"); top.className = "ev-top";
-    const title = document.createElement("div"); title.className = "ev-title"; title.innerText = "Extended Variable Manager"; top.appendChild(title);
+    const title = document.createElement("div"); title.className = "ev-title"; title.innerText = "Advanced Variable Manager"; top.appendChild(title);
     const topActions = document.createElement("div"); 
     const closeBtn = document.createElement("button"); closeBtn.className = "ev-btn ev-del"; closeBtn.innerText = "Close"; 
     closeBtn.onclick = () => removeModal(); 
