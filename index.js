@@ -276,98 +276,110 @@ if (block.type === "variableReferenceBlock") {
     function getCount(cat) { return (live[cat] || []).length; }
 
     function rebuildCategories() {
-        left.innerHTML = "";
-        for (const cat of CATEGORIES) {
-            const el = document.createElement("div"); 
-            el.className = "ev-cat";
-            if (cat === currentCategory) el.classList.add("selected");
-            el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${getCount(cat)}</span>`;
-            el.onclick = () => { 
-                currentCategory = cat; 
-                rebuildCategories(); 
-                rebuildList(); 
-            };
-            left.appendChild(el);
-        }
+    left.innerHTML = "";
+    const fresh = getLiveRegistry(); // refresh live registry
+    Object.assign(live, fresh);
+
+    for (const cat of CATEGORIES) {
+        const el = document.createElement("div"); 
+        el.className = "ev-cat";
+        if (cat === currentCategory) el.classList.add("selected");
+
+        const count = (live[cat] || []).length;
+        el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${count}</span>`;
+
+        el.onclick = () => {
+            currentCategory = cat;
+            rebuildCategories(); // rebuild to refresh highlight and counts
+            rebuildList();      // rebuild center list
+        };
+        left.appendChild(el);
+    }
+}
+
+function rebuildList() {
+    const fresh = getLiveRegistry(); 
+    Object.assign(live, fresh);
+
+    center.innerHTML = "";
+
+    const header = document.createElement("div"); 
+    header.style.display = "flex"; 
+    header.style.justifyContent = "space-between"; 
+    header.style.alignItems = "center"; 
+    header.style.marginBottom = "8px";
+
+    const h = document.createElement("div"); 
+    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`; 
+    header.appendChild(h);
+
+    const addBtn = document.createElement("button"); 
+    addBtn.className = "ev-btn ev-add"; 
+    addBtn.innerText = "Add"; 
+    addBtn.onclick = () => {
+        const name = prompt("Enter variable name:");
+        if (!name) return;
+        const id = makeNextSequentialIdFromWorkspace();
+        createWorkspaceVariable(ws, name, currentCategory, id);
+        rebuildCategories(); 
+        rebuildList();
+    };
+    header.appendChild(addBtn); 
+    center.appendChild(header);
+
+    const arr = live[currentCategory] || [];
+    if (arr.length === 0) { 
+        const empty = document.createElement("div"); 
+        empty.className = "ev-muted"; 
+        empty.innerText = "(no variables)"; 
+        center.appendChild(empty); 
+        return; 
     }
 
-    function rebuildList() {
-        const fresh = getLiveRegistry(); 
-        Object.assign(live, fresh);
-        center.innerHTML = "";
-        const header = document.createElement("div"); 
-        header.style.display = "flex"; 
-        header.style.justifyContent = "space-between"; 
-        header.style.alignItems = "center"; 
-        header.style.marginBottom = "8px";
+    for (const v of arr) {
+        const row = document.createElement("div"); 
+        row.className = "ev-row";
 
-        const h = document.createElement("div"); 
-        h.innerHTML = `<strong>${currentCategory} Variables</strong><div class="ev-muted">Total: ${getCount(currentCategory)}</div>`; 
-        header.appendChild(h);
+        const leftCol = document.createElement("div"); 
+        leftCol.style.display = "flex"; 
+        leftCol.style.flexDirection = "column";
 
-        const addBtn = document.createElement("button"); 
-        addBtn.className = "ev-btn ev-add"; 
-        addBtn.innerText = "Add"; 
-        addBtn.onclick = () => {
-            const name = prompt("Enter variable name:");
-            if (!name) return;
-            const id = makeNextSequentialIdFromWorkspace();
-            createWorkspaceVariable(ws, name, currentCategory, id);
+        const usedCount = countVariableUsage(ws, v);
+        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
+
+        const rightCol = document.createElement("div");
+
+        const editBtn = document.createElement("button"); 
+        editBtn.className = "ev-btn ev-edit"; 
+        editBtn.style.marginRight = "6px"; 
+        editBtn.innerText = "Edit"; 
+        editBtn.onclick = () => {
+            const newName = prompt("Enter new name for variable:", v.name);
+            if (!newName) return;
+            renameWorkspaceVariable(ws, v._raw, newName);
             rebuildCategories(); 
             rebuildList();
         };
-        header.appendChild(addBtn); 
-        center.appendChild(header);
 
-        const arr = live[currentCategory] || [];
-        if (arr.length === 0) { 
-            const empty = document.createElement("div"); 
-            empty.className = "ev-muted"; 
-            empty.innerText = "(no variables)"; 
-            center.appendChild(empty); 
-            return; 
-        }
+        const delBtn = document.createElement("button"); 
+        delBtn.className = "ev-btn ev-del"; 
+        delBtn.innerText = "Delete"; 
+        delBtn.onclick = () => {
+            if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
+            deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
+            rebuildCategories(); 
+            rebuildList();
+        };
 
-        for (const v of arr) {
-            const row = document.createElement("div"); 
-            row.className = "ev-row";
-            const leftCol = document.createElement("div"); 
-            leftCol.style.display = "flex"; 
-            leftCol.style.flexDirection = "column";
+        rightCol.appendChild(editBtn); 
+        rightCol.appendChild(delBtn); 
 
-            const usedCount = countVariableUsage(ws, v);
-            leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
-
-            const rightCol = document.createElement("div");
-            const editBtn = document.createElement("button"); 
-            editBtn.className = "ev-btn ev-edit"; 
-            editBtn.style.marginRight = "6px"; 
-            editBtn.innerText = "Edit"; 
-            editBtn.onclick = () => {
-                const newName = prompt("Enter new name for variable:", v.name);
-                if (!newName) return;
-                renameWorkspaceVariable(ws, v._raw, newName);
-                rebuildCategories(); 
-                rebuildList();
-            };
-
-            const delBtn = document.createElement("button"); 
-            delBtn.className = "ev-btn ev-del"; 
-            delBtn.innerText = "Delete"; 
-            delBtn.onclick = () => {
-                if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-                deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-                rebuildCategories(); 
-                rebuildList();
-            };
-
-            rightCol.appendChild(editBtn); 
-            rightCol.appendChild(delBtn); 
-            row.appendChild(leftCol); 
-            row.appendChild(rightCol); 
-            center.appendChild(row);
-        }
+        row.appendChild(leftCol); 
+        row.appendChild(rightCol); 
+        center.appendChild(row);
     }
+}
+
 
     rebuildCategories(); 
     rebuildList();
