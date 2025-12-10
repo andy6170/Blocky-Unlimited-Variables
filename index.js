@@ -143,23 +143,35 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
  * Workspace "nudge" to force change detection and saving.
  */
 function forceWorkspaceNudge(ws) {
+    if (!ws || !ws.getAllBlocks) return;
     const blocks = ws.getAllBlocks(false);
     if (!blocks.length) return;
 
-    const target = blocks[0]; // pick the first block safely
+    const target = blocks[0];
 
     try {
+        // 1. Move block slightly to trigger internal change
         target.moveBy(1, 0);
         target.moveBy(-1, 0);
 
+        // 2. Render
         target.render(false);
-        ws.setDirty?.(true);
+
+        // 3. Fire a real Blockly change event
+        if (typeof Blockly !== "undefined" && Blockly.Events && Blockly.Events.BlockChange) {
+            Blockly.Events.fire(new Blockly.Events.BlockChange(
+                target, "field", null, null, null
+            ));
+        } else if (ws.fireChangeEvent) {
+            ws.fireChangeEvent();
+        }
 
         console.log("[ExtVars] Nudge triggered save change.");
     } catch (e) {
         console.warn("[ExtVars] Nudge failed:", e);
     }
 }
+
 
 
 
