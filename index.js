@@ -121,20 +121,20 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         }
     });
 
-    // 🔹 Workaround to force the workspace to detect a change
+    // 🔹 Dummy variable workaround to trigger change detection
     try {
         const tmpName = "__TMP__";
         const tmpId = `EV_TMP_${Date.now()}`;
         const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
 
-        // delete immediately
         if (tmpVar) {
+            // Use your existing delete logic
             deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
 
-            // fire a change event so workspace registers the deletion
+            // Force workspace to detect a change
+            ws.setDirty?.(true);
             if (typeof Blockly !== "undefined" && Blockly.Events) {
-                Blockly.Events.fire(new Blockly.Events.Create(tmpVar)); // optional, sometimes needed
-                Blockly.Events.fire(new Blockly.Events.Delete(tmpVar));
+                Blockly.Events.fire(new Blockly.Events.BlockChange(ws)); // generic workspace change
             }
         }
     } catch(e) {
@@ -145,6 +145,7 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
