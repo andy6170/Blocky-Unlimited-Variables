@@ -216,55 +216,58 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     return false;
   }
 
-  // ---------- COUNT USAGE ----------
-  function countVariableUsage(ws, varDef) {
+// ---------- COUNT USAGE ----------
+function countVariableUsage(ws, varDef) {
     if (!ws || !varDef) return 0;
     const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
     const targetId = varDef.id;
     const targetName = varDef.name;
+    const targetType = getVarType(varDef); // e.g., "Global", "Player", etc.
     let count = 0;
 
     console.log("=====================================================");
-    console.log(`[ExtVars] FULL DEBUG START for variable: "${targetName}"`);
+    console.log(`[ExtVars] FULL DEBUG START for variable: "${targetName}" (type: ${targetType})`);
     console.log("=====================================================");
 
     for (const block of allBlocks) {
-      let matched = false;
+        let matched = false;
 
-     // variableReferenceBlock exact match by text
-if (block.type === "variableReferenceBlock") {
-    const text = block.toString ? block.toString().trim() : "";
-    if (text === `Global Variable ${targetName}`) {
-        // check for nesting
-        let nested = false;
-        for (const parent of allBlocks) {
-            if (parent === block) continue;
-            if (isNestedInside(block, parent)) { nested = true; break; }
+        // Only check variable reference blocks
+        if (block.type === "variableReferenceBlock") {
+            const text = block.toString ? block.toString().trim() : "";
+            
+            // Match against dynamic variable type
+            if (text === `${targetType} Variable ${targetName}`) {
+                // Check if block is nested inside another block
+                let nested = false;
+                for (const parent of allBlocks) {
+                    if (parent === block) continue;
+                    if (isNestedInside(block, parent)) { nested = true; break; }
+                }
+
+                if (!nested) {
+                    matched = true;
+                    console.log(`• COUNTED standalone variableReferenceBlock: ${block.id}`);
+                } else {
+                    console.log(`• SKIPPED nested variableReferenceBlock: ${block.id}`);
+                }
+            }
         }
-        if (!nested) {
-            matched = true;
-            console.log(`• COUNTED standalone variableReferenceBlock: ${block.id}`);
-        } else {
-            console.log(`• SKIPPED nested variableReferenceBlock: ${block.id}`);
+
+        if (matched) {
+            count++;
+            console.log(`• BLOCK COUNTED: ${block.type} "${block.toString()}" (id=${block.id})`);
         }
-    }
-}
-
-
-
-
-      if (matched) {
-        count++;
-        console.log(`• BLOCK COUNTED: ${block.type} "${block.toString()}" (id=${block.id})`);
-      }
     }
 
     console.log("=====================================================");
-    console.log(`[ExtVars] FINAL COUNT for "${targetName}": ${count}`);
+    console.log(`[ExtVars] FINAL COUNT for "${targetName}" (type: ${targetType}): ${count}`);
     console.log("=====================================================");
 
     return count;
-  }
+}
+
+
 
 
 
