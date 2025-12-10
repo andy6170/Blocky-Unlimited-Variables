@@ -95,22 +95,51 @@
     return false;
   }
 
-  // ---------- update blocks after rename ----------
+// ---------- update blocks after rename ----------
 function updateBlocksForVariableRename(oldName, newName, ws) {
     if (!ws) return;
-    const allBlocks = ws.getAllBlocks(false);
-    for (const block of allBlocks) {
-        if (!block) continue;
 
-        const variable = block.getVariable?.();
-        if (variable && variable.name === oldName) {
-            variable.name = newName; // update the model
-            const varField = block.getField("VAR");
-            if (varField) varField.setValue(newName); // update displayed text
-            block.render?.(); // redraw block
-        }
-    }
+    const allBlocks = ws.getAllBlocks(false);
+    let changed = 0;
+
+    allBlocks.forEach(block => {
+        if (!block) return;
+
+        block.inputList?.forEach(input => {
+            input.fieldRow?.forEach(field => {
+                if (!field || !field.getValue) return;
+
+                try {
+                    const val = field.getValue();
+
+                    // Check if field stores a variable object
+                    if (val && typeof val === "object" && val.name === oldName) {
+                        val.name = newName;
+                        field.setValue(val); // update field's stored value
+                        changed++;
+                        return;
+                    }
+
+                    // Check if field stores a plain name string
+                    if (val === oldName) {
+                        field.setValue(newName);
+                        // Only call setText if it exists (suppress errors)
+                        if (typeof field.setText === "function") field.setText(newName);
+                        changed++;
+                    }
+                } catch(e) {
+                    // ignore harmless Blockly warnings about missing IDs
+                }
+            });
+        });
+
+        // Force redraw if we updated any field
+        if (changed > 0) block.render?.();
+    });
+
+    console.log(`[ExtVars] Rename complete: ${changed} blocks/fields updated.`);
 }
+
 
 
 
