@@ -114,7 +114,7 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         if (!varField) return;
 
         try {
-            const val = varField.getValue?.();            // old variable ID
+            const val = varField.getValue?.();            // variable ID
             const varObj = ws.getVariableById?.(val);     // lookup variable from ID
 
             if (varObj && varObj.name === newName) {
@@ -133,41 +133,37 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
-    // Force save
-    nudgeModBlock(ws);
+    // Ensure saving detects the change
+    forceWorkspaceNudge(ws);
 }
-
 
 
 /**
- * Force workspace to detect a real change by nudging the mod block.
- * This is safer than moving variable blocks.
+ * Workspace "nudge" to force change detection and saving
+ * by adding and immediately deleting a dummy Number block.
  */
-function nudgeModBlock(ws) {
-    if (!ws || !ws.getAllBlocks) return;
-
-    const allBlocks = ws.getAllBlocks(false);
-    if (!allBlocks.length) return;
-
-    // Find the mod block — replace 'modBlock' with the actual type if different
-    const modBlock = allBlocks.find(b => b.type === "modBlock");
-    if (!modBlock) return;
+function forceWorkspaceNudge(ws) {
+    if (!ws) return;
 
     try {
-        // tiny movement up/down (or left/right)
-        modBlock.moveBy(0, 1);
-        modBlock.moveBy(0, -1);
+        // Create a temporary Number block
+        const temp = ws.newBlock("Number");
+        temp.setFieldValue(0, "NUM");
+        temp.initSvg();
+        temp.render();
 
-        modBlock.render(false);
+        // Add it to the workspace so Blockly sees it
+        ws.addTopBlock(temp);
 
-        // mark workspace as dirty (BF2042 save trigger)
-        ws.setDirty?.(true);
+        // Immediately delete it to trigger a real change event
+        temp.dispose(true);
 
-        console.log("[ExtVars] Mod block nudged to trigger save.");
+        console.log("[ExtVars] Dummy block add/delete triggered save change.");
     } catch (e) {
-        console.warn("[ExtVars] Failed to nudge mod block:", e);
+        console.warn("[ExtVars] Nudge failed:", e);
     }
 }
+
 
 
 
