@@ -123,28 +123,31 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
 
     // 🔹 Dummy variable workaround to trigger change detection
     try {
-        const tmpName = "__TMP__";
-        const tmpId = `EV_TMP_${Date.now()}`;
-        const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
+    const tmpName = "__TMP__";
+    const tmpId = `EV_TMP_${Date.now()}`;
+    const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
 
-        if (tmpVar) {
-            // Use your existing delete logic
+    if (tmpVar) {
+        // Fire a Create event so Blockly fully registers it
+        if (typeof Blockly !== "undefined" && Blockly.Events) {
+            Blockly.Events.fire(new Blockly.Events.Create(tmpVar));
+        }
+
+        // Give Blockly a tiny delay to register the variable before deletion
+        setTimeout(() => {
             deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
 
-            // Force workspace to detect a change
+            // Fire a generic workspace change so it detects the deletion
             ws.setDirty?.(true);
             if (typeof Blockly !== "undefined" && Blockly.Events) {
-                Blockly.Events.fire(new Blockly.Events.BlockChange(ws)); // generic workspace change
+                Blockly.Events.fire(new Blockly.Events.BlockChange(ws));
             }
-        }
-    } catch(e) {
-        console.warn("[ExtVars] Dummy variable workaround failed:", e);
+        }, 0);
     }
-
-    ws.setDirty?.(true); // mark workspace as dirty
-
-    console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
+} catch(e) {
+    console.warn("[ExtVars] Dummy variable workaround failed:", e);
 }
+
 
 
 
