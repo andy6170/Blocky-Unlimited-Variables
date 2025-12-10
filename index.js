@@ -275,7 +275,7 @@ function countVariableUsage(ws, varDef) {
     const style = document.createElement("style");
     style.textContent = `
       .ev-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:999999}
-      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#1a1a1a;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
+      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#1e1e1e;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
       .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
       .ev-cats{width:240px;background:#000000;border-radius:8px;padding:10px;overflow-y:auto}
       .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#171717;color:#e9eef2;margin-bottom:6px}
