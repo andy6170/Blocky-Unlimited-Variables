@@ -105,22 +105,14 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     allBlocks.forEach(block => {
         if (!block) return;
 
-        // only care about blocks that reference variables
         const varField = block.getField && block.getField("VAR");
         if (varField) {
             try {
                 const val = varField.getValue?.();
                 const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
                 if (varObj && varObj.name === newName) {
-                    // refresh display
-                    varField.setValue(val); // assign same ID to force redraw
+                    varField.setValue(val); // force redraw
                     block.render?.();
-
-                    // ✅ Fire a change event for this block
-                    if (typeof Blockly !== "undefined" && Blockly.Events) {
-                        Blockly.Events.fire(new Blockly.Events.Change(block));
-                    }
-
                     changed++;
                 }
             } catch(e) {
@@ -129,11 +121,20 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
         }
     });
 
-    // mark workspace dirty as backup
-    ws.setDirty?.(true);
+    // 🔹 Workaround to force the workspace to detect a change:
+    try {
+        const tmpName = "__TMP__";
+        const tmpId = `EV_TMP_${Date.now()}`;
+        const tmpVar = createWorkspaceVariable(ws, tmpName, "Global", tmpId);
+        deleteWorkspaceVariable(ws, tmpVar?.id || tmpVar?.name);
+    } catch(e) {
+        console.warn("[ExtVars] Dummy variable workaround failed:", e);
+    }
 
+    ws.setDirty?.(true); // extra safety
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
