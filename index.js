@@ -97,57 +97,35 @@
 
 // ---------- update blocks after rename ----------
 function updateBlocksForVariableRename(oldName, newName, ws) {
-    if (!ws) return console.warn("[ExtVars] Workspace missing");
+    if (!ws) return;
 
     const allBlocks = ws.getAllBlocks(false);
     let changed = 0;
 
-    for (const block of allBlocks) {
-        if (!block) continue;
+    allBlocks.forEach(block => {
+        if (!block) return;
 
-        // 1️⃣ Check if the block has a getVariable() method
-        const variable = block.getVariable?.();
-        if (variable && variable.name === oldName) {
-            variable.name = newName; // update the model
-            const varField = block.getField("VAR"); 
-            if (varField?.setValue) varField.setValue(newName); // update displayed value
-            block.render?.(); // redraw the block
-            changed++;
-            continue;
+        // only care about blocks that reference variables
+        const varField = block.getField && block.getField("VAR");
+        if (varField) {
+            try {
+                const val = varField.getValue?.();
+                const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
+                if (varObj && varObj.name === newName) {
+                    // refresh display
+                    varField.setValue(val); // assign same ID to force redraw
+                    block.render?.();
+                    changed++;
+                }
+            } catch(e) {}
         }
-
-        // 2️⃣ Handle variableReferenceBlock style blocks
-        if (block.type === "variableReferenceBlock") {
-            block.inputList?.forEach(input => {
-                input.fieldRow?.forEach(field => {
-                    if (!field || field.name !== "VAR") return;
-
-                    const val = field.getValue?.();
-                    if (val === oldName || (typeof val === "object" && val?.name === oldName)) {
-                        // update the value object if needed
-                        if (typeof val === "object") {
-                            val.name = newName;
-                            field.setValue?.(val);
-                        } else {
-                            field.setValue?.(newName);
-                        }
-                        // update visible text
-                        if (field.setText) {
-                            try { field.setText(newName); } catch(e) {}
-                        }
-                        block.render?.();
-                        changed++;
-                    }
-                });
-            });
-        }
-    }
-
-    // 3️⃣ Force workspace to detect a change so saving works
+    });
+if (ws) {
     ws.fireChangeEvent?.();
     ws.setDirty?.(true);
+}
 
-    console.log(`[ExtVars] Rename complete: ${changed} blocks/fields updated.`);
+    console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
 
 
