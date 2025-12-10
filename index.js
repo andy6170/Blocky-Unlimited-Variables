@@ -177,21 +177,7 @@ if (block.type === "variableReferenceBlock") {
 }
 
 
-      // GetVariable / SetVariable match
-      if (!matched && (block.type === "GetVariable" || block.type === "SetVariable")) {
-        const text = block.toString ? block.toString() : "";
-        if (text.includes(targetName)) matched = true;
-      }
 
-      // Skip nested variableReferenceBlock
-      if (matched && block.type === "variableReferenceBlock") {
-        let nested = false;
-        for (const parent of allBlocks) {
-          if (parent === block) continue;
-          if (isNestedInside(block, parent)) { nested = true; break; }
-        }
-        if (nested) { matched = false; console.log(`• SKIPPED nested variableReferenceBlock: ${block.id}`); }
-      }
 
       if (matched) {
         count++;
