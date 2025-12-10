@@ -105,40 +105,25 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     allBlocks.forEach(block => {
         if (!block) return;
 
-        block.inputList?.forEach(input => {
-            input.fieldRow?.forEach(field => {
-                if (!field || !field.getValue) return;
-
-                try {
-                    const val = field.getValue();
-
-                    // Check if field stores a variable object
-                    if (val && typeof val === "object" && val.name === oldName) {
-                        val.name = newName;
-                        field.setValue(val); // update field's stored value
-                        changed++;
-                        return;
-                    }
-
-                    // Check if field stores a plain name string
-                    if (val === oldName) {
-                        field.setValue(newName);
-                        // Only call setText if it exists (suppress errors)
-                        if (typeof field.setText === "function") field.setText(newName);
-                        changed++;
-                    }
-                } catch(e) {
-                    // ignore harmless Blockly warnings about missing IDs
+        // only care about blocks that reference variables
+        const varField = block.getField && block.getField("VAR");
+        if (varField) {
+            try {
+                const val = varField.getValue?.();
+                const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
+                if (varObj && varObj.name === newName) {
+                    // refresh display
+                    varField.setValue(val); // assign same ID to force redraw
+                    block.render?.();
+                    changed++;
                 }
-            });
-        });
-
-        // Force redraw if we updated any field
-        if (changed > 0) block.render?.();
+            } catch(e) {}
+        }
     });
 
-    console.log(`[ExtVars] Rename complete: ${changed} blocks/fields updated.`);
+    console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 }
+
 
 
 
