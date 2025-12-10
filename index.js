@@ -448,27 +448,21 @@ function rebuildList() {
   setTimeout(initialize,900);
 
 // ---------- safe export of console helpers ----------
-try {
-    if (typeof window !== "undefined") {
-        window._getMainWorkspaceSafe = (...args) => {
-            try { return getMainWorkspaceSafe(...args); }
-            catch(e){ console.warn("getMainWorkspaceSafe failed", e); return null; }
-        };
-
-        window._updateBlocksForVariableRename = (...args) => {
-            try { return updateBlocksForVariableRename(...args); }
-            catch(e){ console.warn("updateBlocksForVariableRename failed", e); }
-        };
-
-        console.info("[ExtVars] Console helpers ACTIVE:",
-            "_getMainWorkspaceSafe",
-            "_updateBlocksForVariableRename"
-        );
-    }
-} catch (err) {
-    console.warn("[ExtVars] Failed exporting console helpers:", err);
-}
-
-
-
+(function(){
+  const ws = _getMainWorkspaceSafe();
+  const blocks = ws.getAllBlocks(false);
+  return blocks.map(b => ({
+      id: b.id,
+      type: b.type,
+      fields: b.inputList?.map(input => ({
+          name: input.name,
+          fields: input.fieldRow?.map(f => ({
+              ctor: f.constructor?.name,
+              name: f.name,
+              value: f.getValue ? f.getValue() : null,
+              text: f.getText ? f.getText() : null
+          }))
+      }))
+  }));
 })();
+
