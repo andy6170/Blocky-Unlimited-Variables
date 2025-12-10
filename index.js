@@ -102,25 +102,16 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     for (const block of allBlocks) {
         if (!block) continue;
 
-        // variableReferenceBlock
-        if (block.type === "variableReferenceBlock") {
-            const variable = block.getVariable?.();
-            if (variable && variable.name === oldName) {
-                variable.name = newName;
-                block.render?.();
-            }
-        }
-
-        // GetVariable / SetVariable
-        if (block.type === "GetVariable" || block.type === "SetVariable") {
-            const variable = block.getVariable?.();
-            if (variable && variable.name === oldName) {
-                variable.name = newName;
-                block.render?.();
-            }
+        const variable = block.getVariable?.();
+        if (variable && variable.name === oldName) {
+            variable.name = newName; // update the model
+            const varField = block.getField("VAR");
+            if (varField) varField.setValue(newName); // update displayed text
+            block.render?.(); // redraw block
         }
     }
 }
+
 
 
 
