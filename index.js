@@ -249,7 +249,7 @@ if (block.type === "variableReferenceBlock") {
       .ev-input{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#0b0b0c;color:#e9eef2;margin-bottom:8px}
       .ev-actions{display:flex;justify-content:flex-end;margin-top:10px;gap:8px}
       .ev-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-      .ev-title{font-weight:700;font-size:16px}
+      .ev-title{font-weight:700;font-size:24px}
     `;
     document.head.appendChild(style);
   })();
