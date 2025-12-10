@@ -156,16 +156,7 @@ function forceWorkspaceNudge(ws) {
         ws.addTopBlock(temp);
 
         // Dispose it asynchronously to avoid workspace freeze
-        setTimeout(() => {
-            try {
-                temp.dispose(true);
-                console.log("[ExtVars] Dummy block add/delete triggered save change.");
-            } catch (e) {
-                console.warn("[ExtVars] Async nudge failed:", e);
-            }
-        }, 50);
-    } catch (e) {
-        console.warn("[ExtVars] Nudge failed:", e);
+
     }
 }
 
