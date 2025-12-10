@@ -96,66 +96,93 @@
   }
 
 // ---------- update blocks after rename ----------
+/**
+ * Update blocks that reference the renamed variable
+ */
 function updateBlocksForVariableRename(oldName, newName, ws) {
     if (!ws) return;
 
-    const allBlocks = ws.getAllBlocks(false);
+    const map = ws.getVariableMap();
+    if (!map) return;
+
     let changed = 0;
 
-    // Update blocks that reference the renamed variable
-    allBlocks.forEach(block => {
-        if (!block) return;
-        const varField = block.getField && block.getField("VAR");
-        if (varField) {
-            try {
-                const val = varField.getValue?.();
-                const varObj = ws.getVariableById ? ws.getVariableById(val) : null;
-                if (varObj && varObj.name === newName) {
-                    varField.setValue(val);
-                    block.render?.();
-                    changed++;
-                }
-            } catch(e) {
-                console.warn("[ExtVars] Error updating block:", e);
-            }
-        }
-    });
-
-    // Create a temporary variable to trigger change detection
-    try {
-        const tmpName = "__TMP__" + Date.now();
-        const tmpVar = createWorkspaceVariable(ws, tmpName, "Global");
-
-        if (tmpVar) {
-            // Fire a create event
-            if (typeof Blockly !== "undefined" && Blockly.Events) {
-                Blockly.Events.fire(new Blockly.Events.Create(tmpVar));
-            }
-
-            // Poll until the variable exists in the workspace before deleting
-            const interval = setInterval(() => {
-                const registeredVar = ws.getVariableById?.(tmpVar.id);
-                if (registeredVar) {
-                    deleteWorkspaceVariable(ws, tmpVar.id || tmpVar.name);
-
-                    // Fire delete event
-                    if (typeof Blockly !== "undefined" && Blockly.Events) {
-                        Blockly.Events.fire(new Blockly.Events.Delete(tmpVar));
-                    }
-
-                    ws.setDirty?.(true); // mark dirty
-                    clearInterval(interval);
-                }
-            }, 5); // check every 5ms
-        }
-    } catch(e) {
-        console.warn("[ExtVars] Dummy variable workaround failed:", e);
+    const varObj = map.getVariable(newName);
+    if (!varObj) {
+        console.warn("[ExtVars] Variable not found after rename:", newName);
+        return;
     }
 
-    ws.setDirty?.(true);
+    const varId = varObj.getId();
+    const allBlocks = ws.getAllBlocks(false);
+
+    for (const block of allBlocks) {
+        if (!block) continue;
+
+        const field = block.getField("VAR");
+        if (!field) continue;
+
+        try {
+            const currentVarId = field.getValue?.();
+            const referenced = ws.getVariableById(currentVarId);
+
+            if (!referenced) continue;
+            if (referenced.name !== newName) continue;
+
+            // Force update / redraw
+            field.setValue(varId);
+            block.render?.();
+            changed++;
+
+        } catch (e) {
+            console.warn("[ExtVars] Failed updating block field", e);
+        }
+    }
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
+
+    // IMPORTANT — tell the workspace something changed
+    forceWorkspaceChange(ws);
 }
+
+
+
+/**
+ * Force Blockly to detect a "change" so saving works.
+ * 
+ * Moves a harmless block by 1px and back, triggering real Blockly events:
+ *   - BLOCK_MOVE
+ *   - workspace.setDirty(true)
+ */
+function forceWorkspaceChange(ws) {
+    if (!ws) return;
+
+    const allBlocks = ws.getAllBlocks(false);
+    if (!allBlocks.length) return;
+
+    // Prefer the required mod block if it exists
+    const target =
+        allBlocks.find(b => b.type === "math_modulo") || allBlocks[0];
+
+    try {
+        const xy = target.getRelativeToSurfaceXY();
+
+        // Nudge right 1px
+        target.moveBy(1, 0);
+        // Nudge back to original position
+        target.moveBy(-1, 0);
+
+        target.render(false);
+
+        ws.setDirty?.(true);
+
+        console.log("[ExtVars] Workspace nudge change fired.");
+
+    } catch (e) {
+        console.warn("[ExtVars] Nudge workaround failed:", e);
+    }
+}
+
 
 
 
