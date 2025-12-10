@@ -157,11 +157,25 @@
     for (const block of allBlocks) {
       let matched = false;
 
-      // variableReferenceBlock exact match
-      if (block.type === "variableReferenceBlock" && block.fields?.VAR) {
-        if ((block.fields.VAR.id && block.fields.VAR.id === targetId) ||
-            (block.fields.VAR.name && block.fields.VAR.name === targetName)) matched = true;
-      }
+     // variableReferenceBlock exact match by text
+if (block.type === "variableReferenceBlock") {
+    const text = block.toString ? block.toString().trim() : "";
+    if (text === `Global Variable ${targetName}`) {
+        // check for nesting
+        let nested = false;
+        for (const parent of allBlocks) {
+            if (parent === block) continue;
+            if (isNestedInside(block, parent)) { nested = true; break; }
+        }
+        if (!nested) {
+            matched = true;
+            console.log(`• COUNTED standalone variableReferenceBlock: ${block.id}`);
+        } else {
+            console.log(`• SKIPPED nested variableReferenceBlock: ${block.id}`);
+        }
+    }
+}
+
 
       // GetVariable / SetVariable match
       if (!matched && (block.type === "GetVariable" || block.type === "SetVariable")) {
