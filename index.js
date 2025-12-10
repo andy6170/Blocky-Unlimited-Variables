@@ -448,26 +448,9 @@ function rebuildList() {
   setTimeout(initialize,900);
 
 // ---------- safe export of console helpers ----------
-try {
-    if (typeof window !== "undefined") {
-        window._getMainWorkspaceSafe = (...args) => {
-            try { return getMainWorkspaceSafe(...args); }
-            catch(e){ console.warn("getMainWorkspaceSafe failed", e); return null; }
-        };
+window._getMainWorkspaceSafe = getMainWorkspaceSafe;
+window._updateBlocksForVariableRename = updateBlocksForVariableRename;
 
-        window._updateBlocksForVariableRename = (...args) => {
-            try { return updateBlocksForVariableRename(...args); }
-            catch(e){ console.warn("updateBlocksForVariableRename failed", e); }
-        };
-
-        console.info("[ExtVars] Console helpers ACTIVE:",
-            "_getMainWorkspaceSafe",
-            "_updateBlocksForVariableRename"
-        );
-    }
-} catch (err) {
-    console.warn("[ExtVars] Failed exporting console helpers:", err);
-}
 
 
 
