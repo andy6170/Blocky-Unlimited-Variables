@@ -130,7 +130,18 @@
     return live;
   }
 
- // Helper: check if a block is nested inside another block's inputs
+
+
+
+  
+// Always use the workspace reference that exists in your environment
+function getWorkspace() {
+    return Blockly.mainWorkspace || Blockly.getMainWorkspace?.();
+}
+
+
+
+// Helper: check if a block is nested inside another block's inputs
 function isNestedInside(block, parent) {
     if (!parent || !parent.inputList) return false;
 
@@ -146,9 +157,15 @@ function isNestedInside(block, parent) {
 }
 
 
-// Main counter function
+
+// MAIN: Count variable usage
 function countVariableUsage(variableName) {
-    const ws = Blockly.getMainWorkspace();
+    const ws = getWorkspace();
+    if (!ws) {
+        console.error("[ExtVars] ERROR: No Blockly workspace found!");
+        return 0;
+    }
+
     const allBlocks = ws.getAllBlocks(false);
 
     console.log("=====================================================");
@@ -163,9 +180,7 @@ function countVariableUsage(variableName) {
 
         console.log(`• CHECK BLOCK: [${type}] "${text}" (id=${block.id})`);
 
-        // -------------------------------------------------------------------
-        // COUNT GETVARIABLE / SETVARIABLE (1 each)
-        // -------------------------------------------------------------------
+        // COUNT GetVariable / SetVariable
         if (
             (type === "GetVariable" || type === "SetVariable") &&
             text.startsWith(`${type} Global Variable ${variableName}`)
@@ -175,14 +190,11 @@ function countVariableUsage(variableName) {
             continue;
         }
 
-        // -------------------------------------------------------------------
-        // COUNT standalone variableReferenceBlock
-        // -------------------------------------------------------------------
+        // COUNT non-nested variableReferenceBlock
         if (
             type === "variableReferenceBlock" &&
             text === `Global Variable ${variableName}`
         ) {
-            // Determine if block is nested inside any other block
             let nested = false;
 
             for (const parent of allBlocks) {
@@ -208,6 +220,7 @@ function countVariableUsage(variableName) {
 
     return count;
 }
+
 
 
 
