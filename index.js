@@ -156,9 +156,9 @@ function forceWorkspaceNudge(ws) {
         ws.addTopBlock(temp);
 
         // Dispose it asynchronously to avoid workspace freeze
-
     }
 }
+
 
 
 
