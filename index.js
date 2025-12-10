@@ -131,48 +131,65 @@
   }
 
   // ---------- count variable usage ----------
-  function countVariableUsage(ws, varDef) {
+ function countVariableUsage(ws, varDef) {
   if (!ws || !varDef) return 0;
 
   const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
-  const varName = varDef.name;
-  const varType = varDef.type || "Global";
+  const targetName = varDef.name;
+  const targetType = varDef.type || "Global";
 
-  const refText = `${varType} Variable ${varName}`;
+  const refText = `${targetType} Variable ${targetName}`;
+  const getPrefix = `GetVariable ${refText}`;
+  const setPrefix = `SetVariable ${refText}`;
 
   let count = 0;
 
+  console.groupCollapsed(`[ExtVars] DEBUG for "${targetName}"`);
   for (const block of allBlocks) {
     let txt = "";
     try { txt = block.toString?.() || ""; } catch (e) {}
 
-    if (!txt) continue;
+    console.log("BLOCK:", {
+      id: block.id,
+      type: block.type,
+      toString: txt
+    });
 
-    switch (block.type) {
-      case "variableReferenceBlock":
-        // These blocks render exactly "Global Variable test"
-        if (txt === refText) count++;
-        break;
-
-      case "GetVariable":
-        // Must START with "GetVariable Global Variable test"
-        if (txt.startsWith(`GetVariable ${refText}`)) count++;
-        break;
-
-      case "SetVariable":
-        // Must START with "SetVariable Global Variable test"
-        if (txt.startsWith(`SetVariable ${refText}`)) count++;
-        break;
-
-      default:
-        // do NOT count variable mentions in child blocks or unrelated strings
-        break;
+    // ---- BLOCK TYPE: variableReferenceBlock ----
+    if (block.type === "variableReferenceBlock") {
+      if (txt.trim() === refText) {
+        count++;
+        console.log("→ MATCH: variableReferenceBlock exact match");
+      }
+      continue;
     }
-  }
 
-  console.log(`[ExtVars] "${varName}" usage: ${count}`);
+    // ---- BLOCK TYPE: GetVariable ----
+    if (block.type === "GetVariable") {
+      if (txt.startsWith(getPrefix)) {
+        count++;
+        console.log("→ MATCH: GetVariable prefix");
+      }
+      continue;
+    }
+
+    // ---- BLOCK TYPE: SetVariable ----
+    if (block.type === "SetVariable") {
+      if (txt.startsWith(setPrefix)) {
+        count++;
+        console.log("→ MATCH: SetVariable prefix");
+      }
+      continue;
+    }
+
+    // No other blocks should count!
+  }
+  console.groupEnd();
+
+  console.log(`[ExtVars] FINAL COUNT for "${targetName}": ${count}`);
   return count;
 }
+
 
 
 
