@@ -280,7 +280,7 @@ function countVariableUsage(ws, varDef) {
       .ev-cats{width:240px;background:#000000;border-radius:8px;padding:10px;overflow-y:auto}
       .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#171717;color:#e9eef2;margin-bottom:6px}
       .ev-cat:hover{background:#434343}
-      .ev-cat.selected{background:#8a0000;border-left:4px solid #ff0a03}
+      .ev-cat.selected{background:#6e0000;border-left:4px solid #ff0a03}
       .ev-list{flex:1;background:#000000;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
       .ev-row{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#171717;border-radius:6px;margin-bottom:8px}
       .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
