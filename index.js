@@ -1,4 +1,4 @@
-// BF6 Extended Variable Manager - live workspace-only (fixed In Use counter) FULLY WORKING BUILD
+// BF6 Extended Variable Manager
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
 
