@@ -284,7 +284,7 @@ function countVariableUsage(ws, varDef) {
       .ev-list{flex:1;background:#000000;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
       .ev-row{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#171717;border-radius:6px;margin-bottom:8px}
       .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
-      .ev-add{background:##009b00}
+      .ev-add{background:#008a00}
       .ev-edit{background:#3a3a3a}
       .ev-del{background:#8a0000}
       .ev-muted{color:#cdcdcd;font-size:14px}
