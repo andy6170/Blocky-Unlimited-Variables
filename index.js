@@ -279,14 +279,14 @@ function countVariableUsage(ws, varDef) {
       .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
       .ev-cats{width:240px;background:#000000;border-radius:8px;padding:10px;overflow-y:auto}
       .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#171717;color:#e9eef2;margin-bottom:6px}
-      .ev-cat:hover{background:#1a1a1c}
-      .ev-cat.selected{background:rgba(255,10,3,0.08);border-left:4px solid #ff0a03}
+      .ev-cat:hover{background:#434343}
+      .ev-cat.selected{background:#ba0500;border-left:4px solid #ff0a03}
       .ev-list{flex:1;background:#000000;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
       .ev-row{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#171717;border-radius:6px;margin-bottom:8px}
       .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
-      .ev-add{background:#2ca72c}
-      .ev-edit{background:#2b2b2b}
-      .ev-del{background:#a73232}
+      .ev-add{background:##009b00}
+      .ev-edit{background:#3a3a3a}
+      .ev-del{background:#8a0000}
       .ev-muted{color:#cdcdcd;font-size:14px}
       .ev-details{width:320px;background:#121214;border-radius:8px;padding:10px;overflow:auto}
       .ev-input{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#0b0b0c;color:#e9eef2;margin-bottom:8px}
