@@ -413,93 +413,188 @@ function countVariableUsage(ws, varDef) {
 }
 
 function rebuildList() {
-    const fresh = getLiveRegistry(); 
+    const ws = getMainWorkspaceSafe();
+    const fresh = getLiveRegistry();
     Object.assign(live, fresh);
 
     center.innerHTML = "";
 
-    const header = document.createElement("div"); 
-    header.style.display = "flex"; 
-    header.style.justifyContent = "space-between"; 
-    header.style.alignItems = "center"; 
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.alignItems = "center";
     header.style.marginBottom = "8px";
 
-    const h = document.createElement("div"); 
-    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`; 
+    const h = document.createElement("div");
+    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`;
     header.appendChild(h);
 
-    const addBtn = document.createElement("button"); 
-    addBtn.className = "ev-btn ev-add"; 
-    addBtn.innerText = "Add"; 
+    const addBtn = document.createElement("button");
+    addBtn.className = "ev-btn ev-add";
+    addBtn.innerText = "Add";
     addBtn.onclick = () => {
         const name = prompt("Enter variable name:");
         if (!name) return;
         const id = makeNextSequentialIdFromWorkspace();
         createWorkspaceVariable(ws, name, currentCategory, id);
-        rebuildCategories(); 
+        rebuildCategories();
         rebuildList();
     };
-    header.appendChild(addBtn); 
+    header.appendChild(addBtn);
     center.appendChild(header);
 
     const arr = live[currentCategory] || [];
-    
-  function applyNewOrder() {
-    if (!center) return;
-    const rows = Array.from(center.querySelectorAll(".ev-row"))
-        .filter(r => r !== placeholder);
+    if (arr.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "ev-muted";
+        empty.innerText = "(no variables)";
+        center.appendChild(empty);
+        return;
+    }
 
-    const newOrder = rows.map(row => {
-        const id = row.dataset.id;
-        return (live[currentCategory] || []).find(v => v.id === id);
-    }).filter(Boolean);
+    // Drag & drop variables
+    arr.forEach(v => {
+        const row = document.createElement("div");
+        row.className = "ev-row";
+        row.dataset.id = v.id;
 
-    const ws = getMainWorkspaceSafe();
-    if (!ws) return;
+        const leftCol = document.createElement("div");
+        leftCol.style.display = "flex";
+        leftCol.style.flexDirection = "column";
 
-    // 1️⃣ Reorder internal workspace variable map (for Blockly UI)
-    try {
-        const map = workspaceGetVariableMap(ws);
-        if (map) {
-            const varArray = map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
-            if (Array.isArray(varArray)) {
-                const others = varArray.filter(v => (getVarType(v) || "Global") !== currentCategory);
-                const reordered = newOrder.map(v => varArray.find(x => getVarId(x) === v.id)).filter(Boolean);
-                const merged = [...others, ...reordered];
+        const usedCount = countVariableUsage(ws, v);
+        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
-                if (map.variableMap_) map.variableMap_ = merged;
-                if (map.variableList) map.variableList = merged;
-                if (map.variables) map.variables = merged;
+        const rightCol = document.createElement("div");
+        const editBtn = document.createElement("button");
+        editBtn.className = "ev-btn ev-edit";
+        editBtn.style.marginRight = "6px";
+        editBtn.innerText = "Edit";
+        editBtn.onclick = () => {
+            const newName = prompt("Enter new name for variable:", v.name);
+            if (!newName) return;
+            const oldName = v.name;
+            renameWorkspaceVariable(ws, v._raw, newName);
+            updateBlocksForVariableRename(oldName, newName, ws);
+            rebuildCategories();
+            rebuildList();
+        };
+        const delBtn = document.createElement("button");
+        delBtn.className = "ev-btn ev-del";
+        delBtn.innerText = "Delete";
+        delBtn.onclick = () => {
+            if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
+            deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
+            rebuildCategories();
+            rebuildList();
+        };
+
+        rightCol.appendChild(editBtn);
+        rightCol.appendChild(delBtn);
+
+        row.appendChild(leftCol);
+        row.appendChild(rightCol);
+        center.appendChild(row);
+
+        // ---------- Drag & Drop ----------
+        row.addEventListener("mousedown", (e) => {
+            if (e.target.closest(".ev-btn")) return;
+            e.preventDefault();
+
+            dragEl = row;
+
+            placeholder = document.createElement("div");
+            placeholder.className = "ev-row";
+            placeholder.style.height = row.offsetHeight + "px";
+            placeholder.style.background = "#2a2a2a";
+            placeholder.style.border = "1px dashed #888";
+
+            row.parentNode.insertBefore(placeholder, row.nextSibling);
+
+            const rect = row.getBoundingClientRect();
+            row.style.position = "fixed";
+            row.style.top = rect.top + "px";
+            row.style.left = rect.left + "px";
+            row.style.width = rect.width + "px";
+            row.style.zIndex = "9999";
+            row.style.pointerEvents = "none";
+            row.style.opacity = "0.85";
+
+            document.body.appendChild(row);
+
+            function moveAt(clientY) {
+                row.style.top = (clientY - row.offsetHeight / 2) + "px";
             }
-        }
-    } catch (e) {
-        console.warn("[ExtVars] Error reordering workspace variable map:", e);
-    }
 
-    // 2️⃣ Reorder export array dynamically
-    try {
-        // Attempt known internal storage locations for export
-        let exportArray = null;
-        if (ws?.blocks_?.variables) exportArray = ws.blocks_.variables;
-        else if (ws?.variableMap?.variables) exportArray = ws.variableMap.variables;
-        else if (ws?.variables) exportArray = ws.variables;
+            function onMouseMove(e) {
+                moveAt(e.clientY);
+                const rows = Array.from(center.querySelectorAll(".ev-row")).filter(r => r !== placeholder);
+                for (const r of rows) {
+                    if (r === placeholder) continue;
+                    const rect = r.getBoundingClientRect();
+                    if (e.clientY < rect.top + rect.height / 2) {
+                        center.insertBefore(placeholder, r);
+                        break;
+                    } else {
+                        center.appendChild(placeholder);
+                    }
+                }
+            }
 
-        if (Array.isArray(exportArray)) {
-            // Clear and repopulate with new order
-            exportArray.length = 0;
-            for (const v of newOrder) exportArray.push(v._raw ?? v);
-            console.log("[ExtVars] Reordered export array for JSON:", newOrder.map(v => v.name));
-        } else {
-            console.warn("[ExtVars] Could not find export variable array; order may not persist on export.");
-        }
-    } catch (e) {
-        console.warn("[ExtVars] Error updating export variables:", e);
-    }
+            document.addEventListener("mousemove", onMouseMove);
 
-    // 3️⃣ Update live registry and UI
-    live[currentCategory] = newOrder;
-    rebuildCategories();
-    rebuildList();
+            document.addEventListener("mouseup", () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                center.insertBefore(dragEl, placeholder);
+                dragEl.style.position = "";
+                dragEl.style.top = "";
+                dragEl.style.left = "";
+                dragEl.style.width = "";
+                dragEl.style.zIndex = "";
+                dragEl.style.pointerEvents = "";
+                dragEl.style.opacity = "";
+                placeholder.remove();
+                placeholder = null;
+                dragEl = null;
+
+                // ---------- APPLY NEW ORDER ----------
+                const newOrder = Array.from(center.querySelectorAll(".ev-row")).map(r => {
+                    const id = r.dataset.id;
+                    return live[currentCategory].find(v => v.id === id);
+                }).filter(Boolean);
+
+                // Update internal workspace array & live registry
+                try {
+                    const map = workspaceGetVariableMap(ws);
+                    let varArray = map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
+                    if (Array.isArray(varArray)) {
+                        const newVarArray = varArray.map(v => {
+                            if ((getVarType(v) || "Global") === currentCategory) {
+                                return newOrder.find(o => getVarId(o) === getVarId(v)) || v;
+                            }
+                            return v;
+                        });
+                        if (map.variableMap_) map.variableMap_ = newVarArray;
+                        if (map.variableList) map.variableList = newVarArray;
+                        if (map.variables) map.variables = newVarArray;
+
+                        live[currentCategory] = newOrder;
+
+                        // Force refresh
+                        const dummyId = "EXTVARS_DUMMY_" + Date.now();
+                        const dummyVar = createWorkspaceVariable(ws, "__EXTVARS_DUMMY__", "Global", dummyId);
+                        if (dummyVar) deleteWorkspaceVariable(ws, dummyId);
+                        rebuildCategories();
+                        rebuildList();
+                        console.log(`[ExtVars] Reordered category "${currentCategory}" successfully`);
+                    }
+                } catch (e) {
+                    console.warn("[ExtVars] Reorder failed:", e);
+                }
+
+            }, { once: true });
+        });
+    });
 }
     if (arr.length === 0) { 
         const empty = document.createElement("div"); 
