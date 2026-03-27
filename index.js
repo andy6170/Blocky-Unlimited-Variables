@@ -101,8 +101,8 @@
 
 
 
-  
-  
+
+
 // ---------- update blocks after rename ----------
 function updateBlocksForVariableRename(oldName, newName, ws) {
     if (!ws) return;
@@ -369,191 +369,75 @@ function countVariableUsage(ws, varDef) {
 }
 
 function rebuildList() {
-    const ws = getMainWorkspaceSafe();
-    const fresh = getLiveRegistry();
+    const fresh = getLiveRegistry(); 
+
     Object.assign(live, fresh);
 
     center.innerHTML = "";
 
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.justifyContent = "space-between";
-    header.style.alignItems = "center";
+    const header = document.createElement("div"); 
+    header.style.display = "flex"; 
+    header.style.justifyContent = "space-between"; 
+    header.style.alignItems = "center"; 
     header.style.marginBottom = "8px";
 
-    const h = document.createElement("div");
-    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`;
+    const h = document.createElement("div"); 
+    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`; 
     header.appendChild(h);
 
-    const addBtn = document.createElement("button");
-    addBtn.className = "ev-btn ev-add";
-    addBtn.innerText = "Add";
+    const addBtn = document.createElement("button"); 
+    addBtn.className = "ev-btn ev-add"; 
+    addBtn.innerText = "Add"; 
     addBtn.onclick = () => {
         const name = prompt("Enter variable name:");
         if (!name) return;
         const id = makeNextSequentialIdFromWorkspace();
         createWorkspaceVariable(ws, name, currentCategory, id);
-        rebuildCategories();
+        rebuildCategories(); 
         rebuildList();
     };
-    header.appendChild(addBtn);
+    header.appendChild(addBtn); 
     center.appendChild(header);
 
     const arr = live[currentCategory] || [];
-    if (arr.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "ev-muted";
-        empty.innerText = "(no variables)";
-        center.appendChild(empty);
-        return;
+    if (arr.length === 0) { 
+        const empty = document.createElement("div"); 
+        empty.className = "ev-muted"; 
+        empty.innerText = "(no variables)"; 
+        center.appendChild(empty); 
+        return; 
     }
 
-    // Drag & drop variables
-    arr.forEach(v => {
-        const row = document.createElement("div");
-        row.className = "ev-row";
-        row.dataset.id = v.id;
+    for (const v of arr) {
+        const row = document.createElement("div"); 
 
-        const leftCol = document.createElement("div");
-        leftCol.style.display = "flex";
+        row.className = "ev-row";
+
+
+        const leftCol = document.createElement("div"); 
+        leftCol.style.display = "flex"; 
         leftCol.style.flexDirection = "column";
 
         const usedCount = countVariableUsage(ws, v);
         leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
         const rightCol = document.createElement("div");
-        const editBtn = document.createElement("button");
-        editBtn.className = "ev-btn ev-edit";
-        editBtn.style.marginRight = "6px";
-        editBtn.innerText = "Edit";
+
+        const editBtn = document.createElement("button"); 
+        editBtn.className = "ev-btn ev-edit"; 
+        editBtn.style.marginRight = "6px"; 
+        editBtn.innerText = "Edit"; 
         editBtn.onclick = () => {
-            const newName = prompt("Enter new name for variable:", v.name);
-            if (!newName) return;
-            const oldName = v.name;
-            renameWorkspaceVariable(ws, v._raw, newName);
-            updateBlocksForVariableRename(oldName, newName, ws);
-            rebuildCategories();
-            rebuildList();
-        };
-        const delBtn = document.createElement("button");
-        delBtn.className = "ev-btn ev-del";
-        delBtn.innerText = "Delete";
-        delBtn.onclick = () => {
-            if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-            deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-            rebuildCategories();
-            rebuildList();
-        };
+    const newName = prompt("Enter new name for variable:", v.name);
+    if (!newName) return;
+    const oldName = v.name;
 
-        rightCol.appendChild(editBtn);
-        rightCol.appendChild(delBtn);
-
-        row.appendChild(leftCol);
-        row.appendChild(rightCol);
-        center.appendChild(row);
-
-        // ---------- Drag & Drop ----------
-        row.addEventListener("mousedown", (e) => {
-            if (e.target.closest(".ev-btn")) return;
-            e.preventDefault();
-
-            dragEl = row;
-
-            placeholder = document.createElement("div");
-            placeholder.className = "ev-row";
-            placeholder.style.height = row.offsetHeight + "px";
-            placeholder.style.background = "#2a2a2a";
-            placeholder.style.border = "1px dashed #888";
-
-            row.parentNode.insertBefore(placeholder, row.nextSibling);
-
-            const rect = row.getBoundingClientRect();
-            row.style.position = "fixed";
-            row.style.top = rect.top + "px";
-            row.style.left = rect.left + "px";
-            row.style.width = rect.width + "px";
-            row.style.zIndex = "9999";
-            row.style.pointerEvents = "none";
-            row.style.opacity = "0.85";
-
-            document.body.appendChild(row);
-
-            function moveAt(clientY) {
-                row.style.top = (clientY - row.offsetHeight / 2) + "px";
-            }
-
-            function onMouseMove(e) {
-                moveAt(e.clientY);
-                const rows = Array.from(center.querySelectorAll(".ev-row")).filter(r => r !== placeholder);
-                for (const r of rows) {
-                    if (r === placeholder) continue;
-                    const rect = r.getBoundingClientRect();
-                    if (e.clientY < rect.top + rect.height / 2) {
-                        center.insertBefore(placeholder, r);
-                        break;
-                    } else {
-                        center.appendChild(placeholder);
-                    }
-                }
-            }
-
-            document.addEventListener("mousemove", onMouseMove);
-
-            document.addEventListener("mouseup", () => {
-                document.removeEventListener("mousemove", onMouseMove);
-                center.insertBefore(dragEl, placeholder);
-                dragEl.style.position = "";
-                dragEl.style.top = "";
-                dragEl.style.left = "";
-                dragEl.style.width = "";
-                dragEl.style.zIndex = "";
-                dragEl.style.pointerEvents = "";
-                dragEl.style.opacity = "";
-                placeholder.remove();
-                placeholder = null;
-                dragEl = null;
-
-                // ---------- APPLY NEW ORDER ----------
-                const newOrder = Array.from(center.querySelectorAll(".ev-row")).map(r => {
-                    const id = r.dataset.id;
-                    return live[currentCategory].find(v => v.id === id);
-                }).filter(Boolean);
-
-                // Update internal workspace array & live registry
-                try {
-                    const map = workspaceGetVariableMap(ws);
-                    let varArray = map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
-                    if (Array.isArray(varArray)) {
-                        const newVarArray = varArray.map(v => {
-                            if ((getVarType(v) || "Global") === currentCategory) {
-                                return newOrder.find(o => getVarId(o) === getVarId(v)) || v;
-                            }
-                            return v;
-                        });
-                        if (map.variableMap_) map.variableMap_ = newVarArray;
-                        if (map.variableList) map.variableList = newVarArray;
-                        if (map.variables) map.variables = newVarArray;
-
-                        live[currentCategory] = newOrder;
-
-                        // Force refresh
-                        const dummyId = "EXTVARS_DUMMY_" + Date.now();
-                        const dummyVar = createWorkspaceVariable(ws, "__EXTVARS_DUMMY__", "Global", dummyId);
-                        if (dummyVar) deleteWorkspaceVariable(ws, dummyId);
-                        rebuildCategories();
-                        rebuildList();
-                        console.log(`[ExtVars] Reordered category "${currentCategory}" successfully`);
-                    }
-                } catch (e) {
-                    console.warn("[ExtVars] Reorder failed:", e);
-                }
-
-            }, { once: true });
-        });
-    });
-}
-
-
+    renameWorkspaceVariable(ws, v._raw, newName);
+    updateBlocksForVariableRename(oldName, newName, ws); // <- apply the rename to blocks
+    rebuildCategories();
+    rebuildList();
+};
+      
         const delBtn = document.createElement("button"); 
         delBtn.className = "ev-btn ev-del"; 
         delBtn.innerText = "Delete"; 
