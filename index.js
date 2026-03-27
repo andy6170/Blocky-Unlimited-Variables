@@ -104,12 +104,9 @@ function reorderVariablesInWorkspace(ws, category, orderedList) {
         const map = workspaceGetVariableMap(ws);
         if (!map) return;
 
-        // Get internal array (different builds use different names)
+        // Get internal array
         const varArray =
-            map.variableMap_ ||
-            map.variableList ||
-            map.variables ||
-            (map.getVariables && map.getVariables());
+            map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
 
         if (!Array.isArray(varArray)) {
             console.warn("[ExtVars] Could not access internal variable array");
@@ -127,20 +124,18 @@ function reorderVariablesInWorkspace(ws, category, orderedList) {
         // Merge back: others + reordered category
         const newList = [...others, ...reordered];
 
-        // Mutate original array (THIS is the key)
-        varArray.length = 0;
-        newList.forEach(v => varArray.push(v));
+        // ✅ Instead of mutating, rebuild map properly
+        if (map.variableMap_) map.variableMap_ = newList;
+        if (map.variableList) map.variableList = newList;
+        if (map.variables) map.variables = newList;
 
-        console.log(`[ExtVars] Reordered ${category} (no delete)`);
-
-        // Force UI refresh (same trick you already use)
+        // Force UI to refresh
         const dummyName = "__EXTVARS_DUMMY__";
         const dummyId = "EXTVARS_DUMMY_" + Date.now();
-
         const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
-        if (dummyVar) {
-            deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
-        }
+        if (dummyVar) deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
+
+        console.log(`[ExtVars] Reordered ${category} and forced refresh`);
 
     } catch (e) {
         console.warn("[ExtVars] reorder error:", e);
