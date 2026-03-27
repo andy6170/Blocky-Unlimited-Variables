@@ -441,12 +441,14 @@ function rebuildList() {
     center.appendChild(header);
 
     const arr = live[currentCategory] || [];
-    function applyNewOrder() {
-    const rows = Array.from(center.querySelectorAll(".ev-row")).filter(r => r !== placeholder);
+    
+  function applyNewOrder() {
+    const rows = Array.from(center.querySelectorAll(".ev-row"))
+        .filter(r => r !== placeholder);
 
     const newOrder = rows.map(row => {
-        const name = row.dataset.name;
-        return arr.find(v => v.name === name);
+        const id = row.dataset.id;
+        return arr.find(v => v.id === id);
     }).filter(Boolean);
 
     reorderVariablesInWorkspace(ws, currentCategory, newOrder);
@@ -467,7 +469,7 @@ function rebuildList() {
         row.className = "ev-row";
 
         // 🔽 NEW (store name for ordering)
-row.dataset.name = v.name;
+row.dataset.id = v.id;
 
 // 🔽 NEW (drag behavior)
 row.addEventListener("mousedown", (e) => {
@@ -545,7 +547,7 @@ row.addEventListener("mousedown", (e) => {
         placeholder = null;
         dragEl = null;
 
-        applyNewOrder(); // 🔥 save order
+        (); // 🔥 save order
 
     }, { once: true });
 });
