@@ -466,7 +466,11 @@ function rebuildList() {
         return arr.find(v => v.id === id);
     }).filter(Boolean);
 
+    // Reorder internal workspace variables
     reorderVariablesInWorkspace(ws, currentCategory, newOrder);
+
+    // 🔥 Update live registry to match new order
+    live[currentCategory] = newOrder;
 
     rebuildCategories();
     rebuildList();
