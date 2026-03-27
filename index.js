@@ -98,47 +98,34 @@
   }
 
 function reorderVariablesInWorkspace(ws, category, orderedList) {
-    if (!ws || !orderedList) return;
+    if (!ws || !orderedList || !category) return;
 
     try {
         const map = workspaceGetVariableMap(ws);
         if (!map) return;
 
-        // Get internal array
-        const varArray =
-            map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
-
-        if (!Array.isArray(varArray)) {
-            console.warn("[ExtVars] Could not access internal variable array");
-            return;
+        // 🔹 Replace only the category array in the internal map
+        if (map.variableMap_ && map.variableMap_[category]) {
+            map.variableMap_[category] = orderedList.map(v => v._raw || v);
         }
 
-        // Separate variables by category
-        const others = varArray.filter(v => (getVarType(v) || "Global") !== category);
+        // 🔹 Rebuild full variableList (flat array for workspace UI)
+        if (map.variableList) {
+            map.variableList = Object.values(map.variableMap_).flat();
+        }
 
-        // Build new ordered category list using IDs
-        const reordered = orderedList.map(v =>
-            varArray.find(x => getVarId(x) === v.id)
-        ).filter(Boolean);
+        // 🔹 Force workspace to refresh variable UI
+        if (ws?.fireChangeEvent) {
+            ws.fireChangeEvent({
+                type: Blockly.Events.VAR_CREATE, // triggers update
+                variable: null
+            });
+        }
 
-        // Merge back: others + reordered category
-        const newList = [...others, ...reordered];
-
-        // ✅ Instead of mutating, rebuild map properly
-        if (map.variableMap_) map.variableMap_ = newList;
-        if (map.variableList) map.variableList = newList;
-        if (map.variables) map.variables = newList;
-
-        // Force UI to refresh
-        const dummyName = "__EXTVARS_DUMMY__";
-        const dummyId = "EXTVARS_DUMMY_" + Date.now();
-        const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
-        if (dummyVar) deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
-
-        console.log(`[ExtVars] Reordered ${category} and forced refresh`);
+        console.log(`[ExtVars] Reordered "${category}" variables and refreshed workspace UI.`);
 
     } catch (e) {
-        console.warn("[ExtVars] reorder error:", e);
+        console.warn("[ExtVars] reorderVariablesInWorkspace error:", e);
     }
 }
 
@@ -458,20 +445,28 @@ function rebuildList() {
     const arr = live[currentCategory] || [];
     
   function applyNewOrder() {
+    const ws = getMainWorkspaceSafe();
+    if (!ws) return;
+
+    // Filter out placeholder rows
     const rows = Array.from(center.querySelectorAll(".ev-row"))
         .filter(r => r !== placeholder);
 
+    // Map rows to variables
     const newOrder = rows.map(row => {
         const id = row.dataset.id;
-        return arr.find(v => v.id === id);
+        return (live[currentCategory] || []).find(v => v.id === id);
     }).filter(Boolean);
 
-    // Reorder internal workspace variables
+    if (newOrder.length === 0) return;
+
+    // 🔹 Reorder internal workspace variables
     reorderVariablesInWorkspace(ws, currentCategory, newOrder);
 
-    // 🔥 Update live registry to match new order
+    // 🔹 Update live registry to match new order
     live[currentCategory] = newOrder;
 
+    // 🔹 Refresh the modal UI
     rebuildCategories();
     rebuildList();
 }
