@@ -267,9 +267,54 @@
   }
 
   function initialize(){
+    registerContextMenuItem();
     if(plugin) plugin.openManager=openModal;
     console.log("[ExtVars] Initialized with drag reorder");
   }
+
+  function registerContextMenuItem(){
+  try{
+    const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry?.registry)?_Blockly.ContextMenuRegistry.registry
+             :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry?.registry)?Blockly.ContextMenuRegistry.registry:null;
+    if(reg && typeof reg.register==="function"){
+      const item={
+        id:"manageExtendedVariables",
+        displayText:"Manage Variables",
+        preconditionFn:()=> "enabled",
+        callback:()=>openModal(),
+        scopeType:(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry)?_Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
+                 :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry)?Blockly.ContextMenuRegistry.ScopeType.WORKSPACE:null,
+        weight:98
+      };
+      try{ if(reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); }catch(e){}
+      reg.register(item);
+      return;
+    }
+  }catch(e){}
+
+  // fallback (also important)
+  document.addEventListener("contextmenu",()=>{
+    setTimeout(()=>{
+      const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
+      if(!menu) return;
+      if(menu.querySelector("[data-extvars]")) return;
+
+      const el=document.createElement("div");
+      el.setAttribute("data-extvars","1");
+      el.style.padding="6px 10px";
+      el.style.cursor="pointer";
+      el.style.color="#e9eef2";
+      el.textContent="Manage Variables";
+
+      el.addEventListener("click",()=>{
+        openModal();
+        try{menu.style.display="none";}catch(e){}
+      });
+
+      menu.appendChild(el);
+    },40);
+  });
+}
 
   setTimeout(initialize,900);
 
