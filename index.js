@@ -2,7 +2,6 @@
 (function () {
   const PLUGIN_ID = "bf-portal-extended-variable-manager";
 
-  // defensive plugin handle
   let plugin = null;
   let dragEl = null;
   let placeholder = null;
@@ -14,7 +13,6 @@
     }
   } catch (e) { plugin = { id: PLUGIN_ID }; }
 
-  // categories
   const CATEGORIES = [
     "Global","AreaTrigger","CapturePoint","EmplacementSpawner","HQ","InteractPoint","LootSpawner","MCOM",
     "Player","RingOfFire","ScreenEffect","Sector","SFX","SpatialObject","Spawner","SpawnPoint","Team",
@@ -97,127 +95,6 @@
     return false;
   }
 
-function reorderVariablesInWorkspace(ws, category, orderedList) {
-    if (!ws || !orderedList || !category) return;
-
-    try {
-        const map = workspaceGetVariableMap(ws);
-        if (!map) return;
-
-        // 🔹 Replace only the category array in the internal map
-        if (map.variableMap_ && map.variableMap_[category]) {
-            map.variableMap_[category] = orderedList.map(v => v._raw || v);
-        }
-
-        // 🔹 Rebuild full variableList (flat array for workspace UI)
-        if (map.variableList) {
-            map.variableList = Object.values(map.variableMap_).flat();
-        }
-
-        // 🔹 Force workspace to refresh variable UI
-        if (ws?.fireChangeEvent) {
-            ws.fireChangeEvent({
-                type: Blockly.Events.VAR_CREATE, // triggers update
-                variable: null
-            });
-        }
-
-        console.log(`[ExtVars] Reordered "${category}" variables and refreshed workspace UI.`);
-
-    } catch (e) {
-        console.warn("[ExtVars] reorderVariablesInWorkspace error:", e);
-    }
-}
-
-
-
-
-
-  
-  
-// ---------- update blocks after rename ----------
-function updateBlocksForVariableRename(oldName, newName, ws) {
-    if (!ws) return;
-
-    const allBlocks = ws.getAllBlocks(false);
-    let changed = 0;
-
-    allBlocks.forEach(block => {
-        if (!block) return;
-
-        const varField = block.getField && block.getField("VAR");
-        if (!varField) return;
-
-        try {
-            const val = varField.getValue?.();            // variable ID
-            const varObj = ws.getVariableById?.(val);     // lookup variable from ID
-
-            if (varObj && varObj.name === newName) {
-                // force field to refresh by reassigning the SAME ID
-                varField.setValue(val);
-
-                // force block to redraw
-                block.render?.();
-
-                changed++;
-            }
-        } catch (e) {
-            console.warn("[ExtVars] Block update error:", e);
-        }
-    });
-
-    console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
-
-    // -------------------------------
-    // Force workspace to detect a change by adding & removing a dummy variable
-    // -------------------------------
-    try {
-        const dummyName = "__EXTVARS_DUMMY__";
-        const dummyId = "EXTVARS_DUMMY_" + Date.now(); // unique ID
-
-        // Add dummy variable
-        const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
-
-        // Immediately delete it
-        if (dummyVar) {
-            deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
-        }
-
-        console.log("[ExtVars] Dummy variable added & deleted to trigger save.");
-    } catch (e) {
-        console.warn("[ExtVars] Dummy variable trick failed:", e);
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function makeNextSequentialIdFromWorkspace() {
-    try {
-      const ws = getMainWorkspaceSafe();
-      const vars = workspaceGetVariables(ws);
-      let max = 0;
-      for (const v of vars) {
-        const id = getVarId(v);
-        if (typeof id === "string" && id.startsWith("EV_")) {
-          const n = parseInt(id.slice(3),10);
-          if (!isNaN(n) && n>max) max=n;
-        }
-      }
-      return "EV_"+String(max+1).padStart(4,"0");
-    } catch(e){ return "EV_0001"; }
-  }
-
-  // ---------- live registry ----------
   function getLiveRegistry() {
     const ws = getMainWorkspaceSafe();
     const live = {};
@@ -236,224 +113,129 @@ function updateBlocksForVariableRename(oldName, newName, ws) {
     return live;
   }
 
-  // ---------- check nested ----------
-  function isNestedInside(block, parent) {
-    if (!parent || !parent.inputList) return false;
-    for (const input of parent.inputList) {
-      if (!input.connection) continue;
-      const target = input.connection.targetBlock_;
-      if (!target) continue;
-      if (target === block) return true;
-    }
-    return false;
-  }
-
-// ---------- COUNT USAGE ----------
-function countVariableUsage(ws, varDef) {
+  function countVariableUsage(ws, varDef) {
     if (!ws || !varDef) return 0;
     const allBlocks = ws.getAllBlocks ? ws.getAllBlocks() : [];
     const targetId = getVarId(varDef);
     let count = 0;
-
-    console.log("=====================================================");
-    console.log(`[ExtVars] FULL DEBUG START for variable: "${getVarName(varDef)}" (type: ${getVarType(varDef)})`);
-    console.log("=====================================================");
-
     for (const block of allBlocks) {
-        if (!block) continue;
-
-        // Only consider blocks with a variable field
-        const varField = block.getField && block.getField("VAR");
-        if (!varField) continue;
-
-        try {
-            const val = varField.getValue?.();          // variable ID stored in the field
-            if (val === targetId) {
-                // Check if nested
-                let nested = false;
-                for (const parent of allBlocks) {
-                    if (parent === block) continue;
-                    if (isNestedInside(block, parent)) { nested = true; break; }
-                }
-                if (!nested) {
-                    count++;
-                    console.log(`• COUNTED block: ${block.type} (id=${block.id})`);
-                } else {
-                    console.log(`• SKIPPED nested block: ${block.type} (id=${block.id})`);
-                }
-            }
-        } catch (e) { console.warn("[ExtVars] Variable count check error:", e); }
+      if (!block) continue;
+      const varField = block.getField && block.getField("VAR");
+      if (!varField) continue;
+      try {
+        const val = varField.getValue?.();
+        if (val === targetId) {
+          count++;
+        }
+      } catch (e) {}
     }
-
-    console.log("=====================================================");
-    console.log(`[ExtVars] FINAL COUNT for "${getVarName(varDef)}": ${count}`);
-    console.log("=====================================================");
-
     return count;
-}
+  }
 
-
-
-
-
-
-
-
-
-
-
-  // ---------- inject CSS ----------
-  (function injectStyle(){
-    const style = document.createElement("style");
-    style.textContent = `
-      .ev-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:999999}
-      .ev-modal{width:min(1100px,94vw);height:min(760px,90vh);background:#1e1e1e;border-radius:10px;padding:14px;display:flex;flex-direction:column;color:#e9eef2;font-family:Inter,Arial,sans-serif;box-shadow:0 12px 48px rgba(0,0,0,0.75)}
-      .ev-content{display:flex;gap:12px;flex:1;overflow:hidden}
-      .ev-cats{width:240px;background:#000000;border-radius:8px;padding:10px;overflow-y:auto}
-      .ev-cat{padding:8px;border-radius:6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#171717;color:#e9eef2;margin-bottom:6px}
-      .ev-cat:hover{background:#434343}
-      .ev-cat.selected{background:#6e0000;border-left:4px solid #ff0a03}
-      .ev-list{flex:1;background:#000000;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
-      .ev-row{
-          display:flex;
-          justify-content:space-between;
-          align-items:center;
-          padding:8px;
-          background:#171717;
-          border-radius:6px;
-          margin-bottom:8px;
-          cursor:grab; /* 🔥 NEW */
+  function updateBlocksForVariableRename(oldName, newName, ws) {
+    if (!ws) return;
+    const allBlocks = ws.getAllBlocks(false);
+    let changed = 0;
+    allBlocks.forEach(block => {
+      if (!block) return;
+      const varField = block.getField && block.getField("VAR");
+      if (!varField) return;
+      try {
+        const val = varField.getValue?.();
+        const varObj = ws.getVariableById?.(val);
+        if (varObj && varObj.name === newName) {
+          varField.setValue(val);
+          block.render?.();
+          changed++;
         }
-        .ev-row:active{
-          cursor:grabbing; /* 🔥 NEW */
-        }
-      .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
-      .ev-add{background:#008a00}
-      .ev-edit{background:#3a3a3a}
-      .ev-del{background:#8a0000}
-      .ev-muted{color:#cdcdcd;font-size:14px}
-      .ev-details{width:320px;background:#121214;border-radius:8px;padding:10px;overflow:auto}
-      .ev-input{width:100%;padding:8px;border-radius:6px;border:1px solid #222;background:#0b0b0c;color:#e9eef2;margin-bottom:8px}
-      .ev-actions{display:flex;justify-content:flex-end;margin-top:10px;gap:8px}
-      .ev-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-      .ev-title{font-weight:700;font-size:24px}
-    `;
-    document.head.appendChild(style);
-  })();
+      } catch (e) {}
+    });
+    // dummy variable to trigger save
+    try {
+      const dummyId = "EXTVARS_DUMMY_" + Date.now();
+      const dummyVar = createWorkspaceVariable(ws, "__EXTVARS_DUMMY__", "Global", dummyId);
+      if (dummyVar) deleteWorkspaceVariable(ws, dummyId);
+    } catch (e) {}
+  }
 
-  // ---------- modal ----------
-  let modalOverlay = null;
-  function removeModal(){ if(modalOverlay){ try{modalOverlay.remove();}catch(e){} modalOverlay=null;} }
+  function makeNextSequentialIdFromWorkspace() {
+    try {
+      const ws = getMainWorkspaceSafe();
+      const vars = workspaceGetVariables(ws);
+      let max = 0;
+      for (const v of vars) {
+        const id = getVarId(v);
+        if (typeof id === "string" && id.startsWith("EV_")) {
+          const n = parseInt(id.slice(3),10);
+          if (!isNaN(n) && n>max) max=n;
+        }
+      }
+      return "EV_"+String(max+1).padStart(4,"0");
+    } catch(e){ return "EV_0001"; }
+  }
 
   function openModal() {
-    removeModal();
     const ws = getMainWorkspaceSafe();
+    if (!ws) return;
     const live = getLiveRegistry();
 
-    // ---------- modal UI ----------
-    modalOverlay = document.createElement("div"); 
+    let modalOverlay = document.createElement("div");
     modalOverlay.className = "ev-overlay";
-    const modal = document.createElement("div"); 
-    modal.className = "ev-modal"; 
+    const modal = document.createElement("div");
+    modal.className = "ev-modal";
     modalOverlay.appendChild(modal);
 
-    // header
-    const top = document.createElement("div"); 
+    // ---------- header ----------
+    const top = document.createElement("div");
     top.className = "ev-top";
-    const title = document.createElement("div"); 
-    title.className = "ev-title"; 
-    title.innerText = "Advanced Variable Manager"; 
+    const title = document.createElement("div");
+    title.className = "ev-title";
+    title.innerText = "Advanced Variable Manager";
     top.appendChild(title);
-
-    const topActions = document.createElement("div"); 
-    const closeBtn = document.createElement("button"); 
-    closeBtn.className = "ev-btn ev-del"; 
-    closeBtn.innerText = "Close"; 
-    closeBtn.onclick = () => removeModal(); 
-    topActions.appendChild(closeBtn); 
-    top.appendChild(topActions); 
+    const topActions = document.createElement("div");
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "ev-btn ev-del";
+    closeBtn.innerText = "Close";
+    closeBtn.onclick = () => modalOverlay.remove();
+    topActions.appendChild(closeBtn);
+    top.appendChild(topActions);
     modal.appendChild(top);
 
-    // content
-    const content = document.createElement("div"); 
-    content.className = "ev-content"; 
+    // ---------- content ----------
+    const content = document.createElement("div");
+    content.className = "ev-content";
     modal.appendChild(content);
 
-    const left = document.createElement("div"); 
+    const left = document.createElement("div");
     left.className = "ev-cats";
-    const center = document.createElement("div"); 
+    const center = document.createElement("div");
     center.className = "ev-list";
-
-    content.appendChild(left); 
-    content.appendChild(center); // removed right panel
+    content.appendChild(left);
+    content.appendChild(center);
 
     let currentCategory = CATEGORIES[0];
-    function getCount(cat) { return (live[cat] || []).length; }
 
     function rebuildCategories() {
-    left.innerHTML = "";
-    const fresh = getLiveRegistry(); // refresh live registry
-    Object.assign(live, fresh);
-
-    for (const cat of CATEGORIES) {
-        const el = document.createElement("div"); 
+      left.innerHTML = "";
+      const fresh = getLiveRegistry();
+      Object.assign(live, fresh);
+      for (const cat of CATEGORIES) {
+        const el = document.createElement("div");
         el.className = "ev-cat";
         if (cat === currentCategory) el.classList.add("selected");
-
         const count = (live[cat] || []).length;
         el.innerHTML = `<span style="font-weight:600">${cat}</span><span class="ev-muted">${count}</span>`;
-
-        el.onclick = () => {
-            currentCategory = cat;
-            rebuildCategories(); // rebuild to refresh highlight and counts
-            rebuildList();      // rebuild center list
-        };
+        el.onclick = () => { currentCategory = cat; rebuildCategories(); rebuildList(); };
         left.appendChild(el);
-    }
-}
-
-function rebuildList() {
-    const ws = getMainWorkspaceSafe();
-    const fresh = getLiveRegistry();
-    Object.assign(live, fresh);
-
-    center.innerHTML = "";
-
-    const header = document.createElement("div");
-    header.style.display = "flex";
-    header.style.justifyContent = "space-between";
-    header.style.alignItems = "center";
-    header.style.marginBottom = "8px";
-
-    const h = document.createElement("div");
-    h.innerHTML = `<strong>${currentCategory} Variables</strong><span class="ev-muted"> Total: ${live[currentCategory]?.length || 0}</span>`;
-    header.appendChild(h);
-
-    const addBtn = document.createElement("button");
-    addBtn.className = "ev-btn ev-add";
-    addBtn.innerText = "Add";
-    addBtn.onclick = () => {
-        const name = prompt("Enter variable name:");
-        if (!name) return;
-        const id = makeNextSequentialIdFromWorkspace();
-        createWorkspaceVariable(ws, name, currentCategory, id);
-        rebuildCategories();
-        rebuildList();
-    };
-    header.appendChild(addBtn);
-    center.appendChild(header);
-
-    const arr = live[currentCategory] || [];
-    if (arr.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "ev-muted";
-        empty.innerText = "(no variables)";
-        center.appendChild(empty);
-        return;
+      }
     }
 
-    // Drag & drop variables
-    arr.forEach(v => {
+    function rebuildList() {
+      center.innerHTML = "";
+      const arr = live[currentCategory] || [];
+      if (!arr.length) { const empty = document.createElement("div"); empty.className="ev-muted"; empty.innerText="(no variables)"; center.appendChild(empty); return; }
+
+      arr.forEach(v => {
         const row = document.createElement("div");
         row.className = "ev-row";
         row.dataset.id = v.id;
@@ -461,332 +243,124 @@ function rebuildList() {
         const leftCol = document.createElement("div");
         leftCol.style.display = "flex";
         leftCol.style.flexDirection = "column";
-
-        const usedCount = countVariableUsage(ws, v);
+        const usedCount = countVariableUsage(ws,v);
         leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
 
         const rightCol = document.createElement("div");
         const editBtn = document.createElement("button");
-        editBtn.className = "ev-btn ev-edit";
-        editBtn.style.marginRight = "6px";
-        editBtn.innerText = "Edit";
+        editBtn.className = "ev-btn ev-edit"; editBtn.style.marginRight="6px"; editBtn.innerText="Edit";
         editBtn.onclick = () => {
-            const newName = prompt("Enter new name for variable:", v.name);
-            if (!newName) return;
-            const oldName = v.name;
-            renameWorkspaceVariable(ws, v._raw, newName);
-            updateBlocksForVariableRename(oldName, newName, ws);
-            rebuildCategories();
-            rebuildList();
+          const newName = prompt("Enter new name for variable:", v.name);
+          if (!newName) return;
+          const oldName = v.name;
+          renameWorkspaceVariable(ws,v._raw,newName);
+          updateBlocksForVariableRename(oldName,newName,ws);
+          rebuildCategories(); rebuildList();
         };
         const delBtn = document.createElement("button");
-        delBtn.className = "ev-btn ev-del";
-        delBtn.innerText = "Delete";
+        delBtn.className = "ev-btn ev-del"; delBtn.innerText="Delete";
         delBtn.onclick = () => {
-            if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-            deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-            rebuildCategories();
-            rebuildList();
+          if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
+          deleteWorkspaceVariable(ws,v.id) || deleteWorkspaceVariable(ws,v.name);
+          rebuildCategories(); rebuildList();
         };
-
-        rightCol.appendChild(editBtn);
-        rightCol.appendChild(delBtn);
-
-        row.appendChild(leftCol);
-        row.appendChild(rightCol);
+        rightCol.appendChild(editBtn); rightCol.appendChild(delBtn);
+        row.appendChild(leftCol); row.appendChild(rightCol);
         center.appendChild(row);
 
-        // ---------- Drag & Drop ----------
-        row.addEventListener("mousedown", (e) => {
-            if (e.target.closest(".ev-btn")) return;
-            e.preventDefault();
+        // ---------- drag & drop ----------
+        row.addEventListener("mousedown", e => {
+          if (e.target.closest(".ev-btn")) return;
+          e.preventDefault();
+          dragEl = row;
 
-            dragEl = row;
+          placeholder = document.createElement("div");
+          placeholder.className="ev-row";
+          placeholder.style.height=row.offsetHeight+"px";
+          placeholder.style.background="#2a2a2a";
+          placeholder.style.border="1px dashed #888";
+          row.parentNode.insertBefore(placeholder,row.nextSibling);
 
-            placeholder = document.createElement("div");
-            placeholder.className = "ev-row";
-            placeholder.style.height = row.offsetHeight + "px";
-            placeholder.style.background = "#2a2a2a";
-            placeholder.style.border = "1px dashed #888";
+          const rect=row.getBoundingClientRect();
+          row.style.position="fixed"; row.style.top=rect.top+"px"; row.style.left=rect.left+"px";
+          row.style.width=rect.width+"px"; row.style.zIndex="9999"; row.style.pointerEvents="none"; row.style.opacity="0.85";
+          document.body.appendChild(row);
 
-            row.parentNode.insertBefore(placeholder, row.nextSibling);
-
-            const rect = row.getBoundingClientRect();
-            row.style.position = "fixed";
-            row.style.top = rect.top + "px";
-            row.style.left = rect.left + "px";
-            row.style.width = rect.width + "px";
-            row.style.zIndex = "9999";
-            row.style.pointerEvents = "none";
-            row.style.opacity = "0.85";
-
-            document.body.appendChild(row);
-
-            function moveAt(clientY) {
-                row.style.top = (clientY - row.offsetHeight / 2) + "px";
+          function moveAt(clientY){ row.style.top=(clientY-row.offsetHeight/2)+"px"; }
+          function onMouseMove(e){
+            moveAt(e.clientY);
+            const rows=Array.from(center.querySelectorAll(".ev-row")).filter(r=>r!==placeholder);
+            for (const r of rows){
+              const rRect=r.getBoundingClientRect();
+              if (e.clientY < rRect.top+rRect.height/2){ center.insertBefore(placeholder,r); break; }
+              else { center.appendChild(placeholder); }
             }
-
-            function onMouseMove(e) {
-                moveAt(e.clientY);
-                const rows = Array.from(center.querySelectorAll(".ev-row")).filter(r => r !== placeholder);
-                for (const r of rows) {
-                    if (r === placeholder) continue;
-                    const rect = r.getBoundingClientRect();
-                    if (e.clientY < rect.top + rect.height / 2) {
-                        center.insertBefore(placeholder, r);
-                        break;
-                    } else {
-                        center.appendChild(placeholder);
-                    }
-                }
-            }
-
-            document.addEventListener("mousemove", onMouseMove);
-
-            document.addEventListener("mouseup", () => {
-                document.removeEventListener("mousemove", onMouseMove);
-                center.insertBefore(dragEl, placeholder);
-                dragEl.style.position = "";
-                dragEl.style.top = "";
-                dragEl.style.left = "";
-                dragEl.style.width = "";
-                dragEl.style.zIndex = "";
-                dragEl.style.pointerEvents = "";
-                dragEl.style.opacity = "";
-                placeholder.remove();
-                placeholder = null;
-                dragEl = null;
-
-                // ---------- APPLY NEW ORDER ----------
-                const newOrder = Array.from(center.querySelectorAll(".ev-row")).map(r => {
-                    const id = r.dataset.id;
-                    return live[currentCategory].find(v => v.id === id);
-                }).filter(Boolean);
-
-                // Update internal workspace array & live registry
-                try {
-                    const map = workspaceGetVariableMap(ws);
-                    let varArray = map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
-                    if (Array.isArray(varArray)) {
-                        const newVarArray = varArray.map(v => {
-                            if ((getVarType(v) || "Global") === currentCategory) {
-                                return newOrder.find(o => getVarId(o) === getVarId(v)) || v;
-                            }
-                            return v;
-                        });
-                        if (map.variableMap_) map.variableMap_ = newVarArray;
-                        if (map.variableList) map.variableList = newVarArray;
-                        if (map.variables) map.variables = newVarArray;
-
-                        live[currentCategory] = newOrder;
-
-                        // Force refresh
-                        const dummyId = "EXTVARS_DUMMY_" + Date.now();
-                        const dummyVar = createWorkspaceVariable(ws, "__EXTVARS_DUMMY__", "Global", dummyId);
-                        if (dummyVar) deleteWorkspaceVariable(ws, dummyId);
-                        rebuildCategories();
-                        rebuildList();
-                        console.log(`[ExtVars] Reordered category "${currentCategory}" successfully`);
-                    }
-                } catch (e) {
-                    console.warn("[ExtVars] Reorder failed:", e);
-                }
-
-            }, { once: true });
+          }
+          document.addEventListener("mousemove",onMouseMove);
+          document.addEventListener("mouseup",()=>{
+            document.removeEventListener("mousemove",onMouseMove);
+            center.insertBefore(dragEl,placeholder);
+            dragEl.style.position=""; dragEl.style.top=""; dragEl.style.left=""; dragEl.style.width=""; dragEl.style.zIndex=""; dragEl.style.pointerEvents=""; dragEl.style.opacity="";
+            placeholder.remove(); placeholder=null; dragEl=null;
+            applyNewOrder();
+          },{once:true});
         });
-    });
-}
-    if (arr.length === 0) { 
-        const empty = document.createElement("div"); 
-        empty.className = "ev-muted"; 
-        empty.innerText = "(no variables)"; 
-        center.appendChild(empty); 
-        return; 
+      });
     }
 
-    for (const v of arr) {
-        const row = document.createElement("div"); 
-        row.className = "ev-row";
+    // ---------- new reorder function ----------
+    function applyNewOrder(){
+      const ws=getMainWorkspaceSafe();
+      if(!ws) return;
+      const rows=Array.from(center.querySelectorAll(".ev-row"));
+      const newOrder=rows.map(r=>live[currentCategory].find(v=>v.id===r.dataset.id)).filter(Boolean);
+      live[currentCategory]=newOrder;
 
-        // 🔽 NEW (store name for ordering)
-row.dataset.id = v.id;
+      try{
+        const map=workspaceGetVariableMap(ws);
+        if(!map) return;
+        if(map.variableList) map.variableList=map.variableList.map(v=>((getVarType(v)||"Global")===currentCategory)?(newOrder.find(o=>getVarId(o)===getVarId(v))||v):v);
+        if(map.variables) map.variables=map.variables.map(v=>((getVarType(v)||"Global")===currentCategory)?(newOrder.find(o=>getVarId(o)===getVarId(v))||v):v);
+        if(map.variableMap_ && map.variableMap_[currentCategory]) map.variableMap_[currentCategory]=newOrder.map(v=>v._raw||v);
 
-// 🔽 NEW (drag behavior)
-row.addEventListener("mousedown", (e) => {
+        const dummyId="EXTVARS_DUMMY_"+Date.now();
+        const dummyVar=createWorkspaceVariable(ws,"__EXTVARS_DUMMY__","Global",dummyId);
+        if(dummyVar) deleteWorkspaceVariable(ws,dummyId);
 
-    // ❗ Ignore clicks on buttons
-    if (e.target.closest(".ev-btn")) return;
-
-    e.preventDefault();
-
-    dragEl = row;
-
-    // Create placeholder
-    placeholder = document.createElement("div");
-    placeholder.className = "ev-row";
-    placeholder.style.height = row.offsetHeight + "px";
-    placeholder.style.background = "#2a2a2a";
-    placeholder.style.border = "1px dashed #888";
-
-    row.parentNode.insertBefore(placeholder, row.nextSibling);
-
-    // Get initial position
-    const rect = row.getBoundingClientRect();
-
-    // Float the dragged element
-    row.style.position = "fixed";
-    row.style.top = rect.top + "px";
-    row.style.left = rect.left + "px";
-    row.style.width = rect.width + "px";
-    row.style.zIndex = "9999";
-    row.style.pointerEvents = "none";
-    row.style.opacity = "0.85";
-
-    document.body.appendChild(row);
-
-    function moveAt(clientY) {
-        row.style.top = (clientY - row.offsetHeight / 2) + "px";
+        rebuildCategories(); rebuildList();
+        console.log(`[ExtVars] Reordered category "${currentCategory}" successfully`);
+      } catch(e){ console.warn("[ExtVars] applyNewOrder error:",e); }
     }
 
-    function onMouseMove(e) {
-        moveAt(e.clientY);
-
-        const rows = Array.from(center.querySelectorAll(".ev-row")).filter(r => r !== placeholder);
-
-        for (const r of rows) {
-            if (r === placeholder) continue;
-
-            const rect = r.getBoundingClientRect();
-
-            if (e.clientY < rect.top + rect.height / 2) {
-                center.insertBefore(placeholder, r);
-                break;
-            } else {
-                center.appendChild(placeholder);
-            }
-        }
-    }
-
-    document.addEventListener("mousemove", onMouseMove);
-
-    document.addEventListener("mouseup", () => {
-        document.removeEventListener("mousemove", onMouseMove);
-
-        // Restore element
-        center.insertBefore(dragEl, placeholder);
-
-        dragEl.style.position = "";
-        dragEl.style.top = "";
-        dragEl.style.left = "";
-        dragEl.style.width = "";
-        dragEl.style.zIndex = "";
-        dragEl.style.pointerEvents = "";
-        dragEl.style.opacity = "";
-
-        placeholder.remove();
-        placeholder = null;
-        dragEl = null;
-
-        applyNewOrder(); // 🔥 save order
-
-    }, { once: true });
-});
-
-        const leftCol = document.createElement("div"); 
-        leftCol.style.display = "flex"; 
-        leftCol.style.flexDirection = "column";
-
-        const usedCount = countVariableUsage(ws, v);
-        leftCol.innerHTML = `<div style="font-weight:600">${v.name}</div><div class="ev-muted">In use: (${usedCount})</div>`;
-
-        const rightCol = document.createElement("div");
-
-        const editBtn = document.createElement("button"); 
-        editBtn.className = "ev-btn ev-edit"; 
-        editBtn.style.marginRight = "6px"; 
-        editBtn.innerText = "Edit"; 
-        editBtn.onclick = () => {
-        
-    const newName = prompt("Enter new name for variable:", v.name);
-    if (!newName) return;
-    const oldName = v.name;
-
-    renameWorkspaceVariable(ws, v._raw, newName);
-    updateBlocksForVariableRename(oldName, newName, ws); // <- apply the rename to blocks
-    rebuildCategories();
-    rebuildList();
-};
-
-      
-
-
-        const delBtn = document.createElement("button"); 
-        delBtn.className = "ev-btn ev-del"; 
-        delBtn.innerText = "Delete"; 
-        delBtn.onclick = () => {
-            if (!confirm(`Delete variable "${v.name}"? This may break blocks referencing it.`)) return;
-            deleteWorkspaceVariable(ws, v.id) || deleteWorkspaceVariable(ws, v.name);
-            rebuildCategories(); 
-            rebuildList();
-        };
-
-        rightCol.appendChild(editBtn); 
-        rightCol.appendChild(delBtn); 
-
-        row.appendChild(leftCol); 
-        row.appendChild(rightCol); 
-        center.appendChild(row);
-    }
-}
-
-
-    rebuildCategories(); 
-    rebuildList();
-    modalOverlay.addEventListener("click", (ev) => { if (ev.target === modalOverlay) removeModal(); });
+    rebuildCategories(); rebuildList();
+    modalOverlay.addEventListener("click",ev=>{ if(ev.target===modalOverlay) modalOverlay.remove(); });
     document.body.appendChild(modalOverlay);
+  }
 
-
-
-  // ---------- context menu ----------
   function registerContextMenuItem() {
     try{
       const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry?.registry)?_Blockly.ContextMenuRegistry.registry
                :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry?.registry)?Blockly.ContextMenuRegistry.registry:null;
       if(reg && typeof reg.register==="function"){
-        const item={
-          id:"manageExtendedVariables",
-          displayText:"Manage Variables",
-          preconditionFn:()=> "enabled",
-          callback:()=>openModal(),
-          scopeType:(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry)?_Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
-                   :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry)?Blockly.ContextMenuRegistry.ScopeType.WORKSPACE:null,
-          weight:98
-        };
+        const item={ id:"manageExtendedVariables", displayText:"Manage Variables", preconditionFn:()=> "enabled", callback:()=>openModal(), scopeType:(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry)?_Blockly.ContextMenuRegistry.ScopeType.WORKSPACE:(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry)?Blockly.ContextMenuRegistry.ScopeType.WORKSPACE:null, weight:98};
         try{ if(reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); }catch(e){}
-        reg.register(item); console.log("[ExtVars] Registered context menu item via ContextMenuRegistry"); return;
+        reg.register(item); return;
       }
-    }catch(e){ console.warn("[ExtVars] ContextMenuRegistry registration failed:",e); }
-
+    }catch(e){}
     // fallback
-    (function domFallback(){
-      document.addEventListener("contextmenu",()=>{
-        setTimeout(()=>{
-          const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu"); if(!menu) return;
-          if(menu.querySelector("[data-extvars]")) return;
-          const el=document.createElement("div"); el.setAttribute("data-extvars","1"); el.style.padding="6px 10px"; el.style.cursor="pointer"; el.style.color="#e9eef2"; el.textContent="Manage Variables"; el.addEventListener("click",()=>{ openModal(); try{menu.style.display="none";}catch(e){} }); menu.appendChild(el);
-        },40);
-      });
-    })();
+    document.addEventListener("contextmenu",()=>{
+      setTimeout(()=>{
+        const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu"); if(!menu) return;
+        if(menu.querySelector("[data-extvars]")) return;
+        const el=document.createElement("div"); el.setAttribute("data-extvars","1"); el.style.padding="6px 10px"; el.style.cursor="pointer"; el.style.color="#e9eef2"; el.textContent="Manage Variables"; el.addEventListener("click",()=>{ openModal(); try{menu.style.display="none";}catch(e){} }); menu.appendChild(el);
+      },40);
+    });
   }
 
-  function initialize(){ registerContextMenuItem(); if(plugin) plugin.openManager=openModal; console.info("[ExtVars] Live Extended Variable Manager initialized (workspace-only)."); }
+  function initialize(){ registerContextMenuItem(); if(plugin) plugin.openManager=openModal; console.info("[ExtVars] Live Extended Variable Manager initialized."); }
   setTimeout(initialize,900);
 
-// ---------- safe export of console helpers ----------
-window._getMainWorkspaceSafe = getMainWorkspaceSafe;
-window._updateBlocksForVariableRename = updateBlocksForVariableRename;
-
-
-
+  window._getMainWorkspaceSafe = getMainWorkspaceSafe;
+  window._updateBlocksForVariableRename = updateBlocksForVariableRename;
 
 })();
