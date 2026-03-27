@@ -101,27 +101,47 @@ function reorderVariablesInWorkspace(ws, category, orderedList) {
     if (!ws || !orderedList) return;
 
     try {
-        const snapshot = orderedList.map(v => ({
-            id: v.id,
-            name: v.name,
-            type: v.type
-        }));
+        const map = workspaceGetVariableMap(ws);
+        if (!map) return;
 
-        const allVars = workspaceGetVariables(ws);
+        // Get internal array (different builds use different names)
+        const varArray =
+            map.variableMap_ ||
+            map.variableList ||
+            map.variables ||
+            (map.getVariables && map.getVariables());
 
-        // Delete only this category
-        for (const v of allVars) {
-            if ((getVarType(v) || "Global") === category) {
-                deleteWorkspaceVariable(ws, getVarId(v));
-            }
+        if (!Array.isArray(varArray)) {
+            console.warn("[ExtVars] Could not access internal variable array");
+            return;
         }
 
-        // Recreate in new order
-        for (const v of snapshot) {
-            createWorkspaceVariable(ws, v.name, v.type, v.id);
+        // Separate variables by category
+        const others = varArray.filter(v => (getVarType(v) || "Global") !== category);
+
+        // Build new ordered category list using IDs
+        const reordered = orderedList.map(v =>
+            varArray.find(x => getVarId(x) === v.id)
+        ).filter(Boolean);
+
+        // Merge back: others + reordered category
+        const newList = [...others, ...reordered];
+
+        // Mutate original array (THIS is the key)
+        varArray.length = 0;
+        newList.forEach(v => varArray.push(v));
+
+        console.log(`[ExtVars] Reordered ${category} (no delete)`);
+
+        // Force UI refresh (same trick you already use)
+        const dummyName = "__EXTVARS_DUMMY__";
+        const dummyId = "EXTVARS_DUMMY_" + Date.now();
+
+        const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
+        if (dummyVar) {
+            deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
         }
 
-        console.log(`[ExtVars] Reordered ${category}`);
     } catch (e) {
         console.warn("[ExtVars] reorder error:", e);
     }
