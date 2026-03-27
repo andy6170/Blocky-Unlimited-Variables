@@ -547,7 +547,7 @@ row.addEventListener("mousedown", (e) => {
         placeholder = null;
         dragEl = null;
 
-        (); // 🔥 save order
+        applyNewOrder(); // 🔥 save order
 
     }, { once: true });
 });
