@@ -445,47 +445,53 @@ function rebuildList() {
     const arr = live[currentCategory] || [];
     
   function applyNewOrder() {
+    if (!center) return;
     const rows = Array.from(center.querySelectorAll(".ev-row"))
         .filter(r => r !== placeholder);
 
     const newOrder = rows.map(row => {
         const id = row.dataset.id;
-        return arr.find(v => v.id === id);
+        return (live[currentCategory] || []).find(v => v.id === id);
     }).filter(Boolean);
 
-    // --- NEW: reorder the workspace variable array that drives export ---
-    try {
-        const ws = getMainWorkspaceSafe();
-        const map = workspaceGetVariableMap(ws);
-        if (!map) throw "No variable map found";
+    const ws = getMainWorkspaceSafe();
+    if (!ws) return;
 
-        // Try common candidates for export-order array
-        const candidates = ["variables", "variableArray", "variableList_", "variableMap_"];
-        let exportArray = null;
-        for (const key of candidates) {
-            if (Array.isArray(map[key])) {
-                exportArray = map[key];
-                break;
+    // 1️⃣ Reorder internal workspace variable map (for Blockly UI)
+    try {
+        const map = workspaceGetVariableMap(ws);
+        if (map) {
+            const varArray = map.variableMap_ || map.variableList || map.variables || (map.getVariables && map.getVariables());
+            if (Array.isArray(varArray)) {
+                const others = varArray.filter(v => (getVarType(v) || "Global") !== currentCategory);
+                const reordered = newOrder.map(v => varArray.find(x => getVarId(x) === v.id)).filter(Boolean);
+                const merged = [...others, ...reordered];
+
+                if (map.variableMap_) map.variableMap_ = merged;
+                if (map.variableList) map.variableList = merged;
+                if (map.variables) map.variables = merged;
             }
         }
-
-        if (exportArray) {
-            // Replace in-place with reordered objects
-            exportArray.length = 0; // clear
-            for (const v of newOrder) exportArray.push(v._raw ?? v);
-
-            console.log("[ExtVars] Reordered main variable array for export:", newOrder.map(v => v.name));
-        } else {
-            console.warn("[ExtVars] Could not find export variable array; order may not persist on export.");
-        }
     } catch (e) {
-        console.warn("[ExtVars] Failed to update export array:", e);
+        console.warn("[ExtVars] Error reordering workspace variable map:", e);
     }
 
-    // 🔥 Update live registry to match new order
-    live[currentCategory] = newOrder;
+    // 2️⃣ Reorder export array so that JSON export respects it
+    try {
+        const exportVars = ws?.blocks_?.variables;
+        if (Array.isArray(exportVars)) {
+            exportVars.length = 0;
+            for (const v of newOrder) exportVars.push(v._raw ?? v);
+            console.log("[ExtVars] Reordered export array:", newOrder.map(v => v.name));
+        } else {
+            console.warn("[ExtVars] Could not access blocks_.variables for export");
+        }
+    } catch (e) {
+        console.warn("[ExtVars] Error updating export variables:", e);
+    }
 
-    // Rebuild UI
+    // 3️⃣ Update live registry and UI
+    live[currentCategory] = newOrder;
     rebuildCategories();
     rebuildList();
 }
