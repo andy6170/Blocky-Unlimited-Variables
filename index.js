@@ -445,28 +445,47 @@ function rebuildList() {
     const arr = live[currentCategory] || [];
     
   function applyNewOrder() {
-    const ws = getMainWorkspaceSafe();
-    if (!ws) return;
-
-    // Filter out placeholder rows
     const rows = Array.from(center.querySelectorAll(".ev-row"))
         .filter(r => r !== placeholder);
 
-    // Map rows to variables
     const newOrder = rows.map(row => {
         const id = row.dataset.id;
-        return (live[currentCategory] || []).find(v => v.id === id);
+        return arr.find(v => v.id === id);
     }).filter(Boolean);
 
-    if (newOrder.length === 0) return;
+    // --- NEW: reorder the workspace variable array that drives export ---
+    try {
+        const ws = getMainWorkspaceSafe();
+        const map = workspaceGetVariableMap(ws);
+        if (!map) throw "No variable map found";
 
-    // 🔹 Reorder internal workspace variables
-    reorderVariablesInWorkspace(ws, currentCategory, newOrder);
+        // Try common candidates for export-order array
+        const candidates = ["variables", "variableArray", "variableList_", "variableMap_"];
+        let exportArray = null;
+        for (const key of candidates) {
+            if (Array.isArray(map[key])) {
+                exportArray = map[key];
+                break;
+            }
+        }
 
-    // 🔹 Update live registry to match new order
+        if (exportArray) {
+            // Replace in-place with reordered objects
+            exportArray.length = 0; // clear
+            for (const v of newOrder) exportArray.push(v._raw ?? v);
+
+            console.log("[ExtVars] Reordered main variable array for export:", newOrder.map(v => v.name));
+        } else {
+            console.warn("[ExtVars] Could not find export variable array; order may not persist on export.");
+        }
+    } catch (e) {
+        console.warn("[ExtVars] Failed to update export array:", e);
+    }
+
+    // 🔥 Update live registry to match new order
     live[currentCategory] = newOrder;
 
-    // 🔹 Refresh the modal UI
+    // Rebuild UI
     rebuildCategories();
     rebuildList();
 }
