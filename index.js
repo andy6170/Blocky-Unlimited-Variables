@@ -744,11 +744,11 @@ row.addEventListener("mousedown", (e) => {
     rebuildList();
     modalOverlay.addEventListener("click", (ev) => { if (ev.target === modalOverlay) removeModal(); });
     document.body.appendChild(modalOverlay);
-}
+
 
 
   // ---------- context menu ----------
-  function registerContextMenuItem(){
+  function registerContextMenuItem() {
     try{
       const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry?.registry)?_Blockly.ContextMenuRegistry.registry
                :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry?.registry)?Blockly.ContextMenuRegistry.registry:null;
