@@ -476,15 +476,21 @@ function rebuildList() {
         console.warn("[ExtVars] Error reordering workspace variable map:", e);
     }
 
-    // 2️⃣ Reorder export array so that JSON export respects it
+    // 2️⃣ Reorder export array dynamically
     try {
-        const exportVars = ws?.blocks_?.variables;
-        if (Array.isArray(exportVars)) {
-            exportVars.length = 0;
-            for (const v of newOrder) exportVars.push(v._raw ?? v);
-            console.log("[ExtVars] Reordered export array:", newOrder.map(v => v.name));
+        // Attempt known internal storage locations for export
+        let exportArray = null;
+        if (ws?.blocks_?.variables) exportArray = ws.blocks_.variables;
+        else if (ws?.variableMap?.variables) exportArray = ws.variableMap.variables;
+        else if (ws?.variables) exportArray = ws.variables;
+
+        if (Array.isArray(exportArray)) {
+            // Clear and repopulate with new order
+            exportArray.length = 0;
+            for (const v of newOrder) exportArray.push(v._raw ?? v);
+            console.log("[ExtVars] Reordered export array for JSON:", newOrder.map(v => v.name));
         } else {
-            console.warn("[ExtVars] Could not access blocks_.variables for export");
+            console.warn("[ExtVars] Could not find export variable array; order may not persist on export.");
         }
     } catch (e) {
         console.warn("[ExtVars] Error updating export variables:", e);
