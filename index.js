@@ -232,7 +232,6 @@
   // ---------- reorder variables in internal map ----------
   function reorderVariablesInMap(ws, cat, orderedIds) {
     const map = workspaceGetVariableMap(ws);
-
     console.log("==============================================");
     console.log("[ExtVars][Reorder] ENTER for category:", cat);
 
@@ -241,28 +240,14 @@
         return;
     }
 
-    // NEW: Dump the entire map object
-    console.log("[ExtVars][Reorder] Variable map object:", map);
-    console.log("[ExtVars][Reorder] Keys:", Object.keys(map));
-
-    // NEW: Dump getVariables() output
-    try {
-        const vars = map.getVariables?.() || [];
-        console.log("[ExtVars][Reorder] map.getVariables():", vars.map(v => ({
-            id: v.id,
-            name: v.name,
-            type: v.type
-        })));
-    } catch (e) {
-        console.warn("[ExtVars][Reorder] getVariables() threw:", e);
+    // Portal fork: variables are stored in a Map called `variableMap`
+    const vm = map.variableMap;
+    if (!vm || typeof vm.get !== "function") {
+        console.warn("[ExtVars][Reorder] variableMap is not a Map:", vm);
+        return;
     }
 
-    // Try the known internal structures
-    const raw =
-        (map.variableMap_ && map.variableMap_[cat]) ||
-        (map.variables_ && map.variables_[cat]) ||
-        null;
-
+    const raw = vm.get(cat);
     console.log("[ExtVars][Reorder] raw array for", cat, "=", raw);
 
     if (!Array.isArray(raw)) {
@@ -286,8 +271,8 @@
 
     console.log("[ExtVars][Reorder] AFTER:", newArr.map(v => getVarId(v)));
 
-    if (map.variableMap_) map.variableMap_[cat] = newArr;
-    if (map.variables_) map.variables_[cat] = newArr;
+    // Write back into the Map
+    vm.set(cat, newArr);
 
     console.log("[ExtVars][Reorder] WRITE COMPLETE");
     console.log("==============================================");
