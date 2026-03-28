@@ -232,10 +232,18 @@
   // ---------- reorder variables in internal map ----------
   function reorderVariablesInMap(ws, cat, orderedIds) {
     const map = workspaceGetVariableMap(ws);
-    if (!map) return;
+    if (!map) {
+      console.warn("[ExtVars][Reorder] No variable map");
+      return;
+    }
 
     const raw = (map.variableMap_ && map.variableMap_[cat]) || (map.variables_ && map.variables_[cat]);
-    if (!Array.isArray(raw)) return;
+    if (!Array.isArray(raw)) {
+      console.warn("[ExtVars][Reorder] No raw array for category:", cat, "raw:", raw);
+      return;
+    }
+
+    console.log("[ExtVars][Reorder] BEFORE for", cat, ":", raw.map(v => getVarId(v)));
 
     const newArr = [];
 
@@ -247,6 +255,8 @@
     for (const v of raw) {
       if (!newArr.includes(v)) newArr.push(v);
     }
+
+    console.log("[ExtVars][Reorder] AFTER for", cat, ":", newArr.map(v => getVarId(v)));
 
     if (map.variableMap_) map.variableMap_[cat] = newArr;
     if (map.variables_) map.variables_[cat] = newArr;
@@ -361,6 +371,8 @@
         const dragging = center.querySelector(".ev-row.dragging");
         if (!dragging) return;
 
+        console.log("[ExtVars][DnD] dragover fired");
+
         const rows = [...center.querySelectorAll(".ev-row:not(.dragging)")];
         const after = rows.find(r => ev.clientY <= r.getBoundingClientRect().top + r.offsetHeight / 2);
 
@@ -369,8 +381,12 @@
       });
 
       center.addEventListener("drop", () => {
+        console.log("[ExtVars][DnD] drop fired");
+
         const newOrder = [...center.querySelectorAll(".ev-row")]
           .map(r => r.dataset.varId);
+
+        console.log("[ExtVars][DnD] newOrder from DOM:", newOrder);
 
         reorderVariablesInMap(ws, currentCategory, newOrder);
 
@@ -381,6 +397,8 @@
 
     function rebuildList() {
       const fresh = getLiveRegistry(); 
+      console.log("[ExtVars][List] Live registry order for", currentCategory, ":", 
+        (fresh[currentCategory] || []).map(v => v.id));
       Object.assign(live, fresh);
 
       center.innerHTML = "";
@@ -420,7 +438,9 @@
         return; 
       }
 
-      for (const v of arr) {
+      arr.forEach((v, idx) => {
+        console.log("[ExtVars][RowBuild]", currentCategory, "idx", idx, "id", v.id, "name", v.name);
+
         const row = document.createElement("div"); 
         row.className = "ev-row";
         row.setAttribute("draggable", "true");
@@ -476,18 +496,23 @@
         row.appendChild(rightCol); 
         center.appendChild(row);
 
-        // Handle-only drag logic
+        // Handle-only drag logic with debug
         let allowDrag = false;
 
         dragHandle.addEventListener("mousedown", () => {
           allowDrag = true;
+          console.log("[ExtVars][DnD] mousedown on handle for", v.id);
         });
 
         document.addEventListener("mouseup", () => {
+          if (allowDrag) {
+            console.log("[ExtVars][DnD] mouseup, clearing allowDrag for", v.id);
+          }
           allowDrag = false;
         });
 
         row.addEventListener("dragstart", ev => {
+          console.log("[ExtVars][DnD] dragstart on row", v.id, "allowDrag =", allowDrag);
           if (!allowDrag) {
             ev.preventDefault();
             return;
@@ -497,10 +522,11 @@
         });
 
         row.addEventListener("dragend", () => {
+          console.log("[ExtVars][DnD] dragend on row", v.id);
           row.classList.remove("dragging");
           allowDrag = false;
         });
-      }
+      });
     }
 
     rebuildCategories(); 
