@@ -274,6 +274,22 @@
     // Write back into the Map
     vm.set(cat, newArr);
 
+    // Force Portal to detect a change (same trick used in rename)
+    try {
+        const dummyName = "__EXTVARS_ORDER_DUMMY__";
+        const dummyId = "EXTVARS_ORDER_DUMMY_" + Date.now();
+
+        const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
+
+        if (dummyVar) {
+            deleteWorkspaceVariable(ws, dummyId) || deleteWorkspaceVariable(ws, dummyName);
+        }
+
+    console.log("[ExtVars][Reorder] Dummy variable added & removed to trigger save.");
+} catch (e) {
+    console.warn("[ExtVars][Reorder] Dummy variable trick failed:", e);
+}
+
     console.log("[ExtVars][Reorder] WRITE COMPLETE");
     console.log("==============================================");
 }
