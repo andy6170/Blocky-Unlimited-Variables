@@ -232,35 +232,66 @@
   // ---------- reorder variables in internal map ----------
   function reorderVariablesInMap(ws, cat, orderedIds) {
     const map = workspaceGetVariableMap(ws);
+
+    console.log("==============================================");
+    console.log("[ExtVars][Reorder] ENTER for category:", cat);
+
     if (!map) {
-      console.warn("[ExtVars][Reorder] No variable map");
-      return;
+        console.warn("[ExtVars][Reorder] No variable map");
+        return;
     }
 
-    const raw = (map.variableMap_ && map.variableMap_[cat]) || (map.variables_ && map.variables_[cat]);
+    // NEW: Dump the entire map object
+    console.log("[ExtVars][Reorder] Variable map object:", map);
+    console.log("[ExtVars][Reorder] Keys:", Object.keys(map));
+
+    // NEW: Dump getVariables() output
+    try {
+        const vars = map.getVariables?.() || [];
+        console.log("[ExtVars][Reorder] map.getVariables():", vars.map(v => ({
+            id: v.id,
+            name: v.name,
+            type: v.type
+        })));
+    } catch (e) {
+        console.warn("[ExtVars][Reorder] getVariables() threw:", e);
+    }
+
+    // Try the known internal structures
+    const raw =
+        (map.variableMap_ && map.variableMap_[cat]) ||
+        (map.variables_ && map.variables_[cat]) ||
+        null;
+
+    console.log("[ExtVars][Reorder] raw array for", cat, "=", raw);
+
     if (!Array.isArray(raw)) {
-      console.warn("[ExtVars][Reorder] No raw array for category:", cat, "raw:", raw);
-      return;
+        console.warn("[ExtVars][Reorder] No raw array for category:", cat, "raw:", raw);
+        console.log("==============================================");
+        return;
     }
 
-    console.log("[ExtVars][Reorder] BEFORE for", cat, ":", raw.map(v => getVarId(v)));
+    console.log("[ExtVars][Reorder] BEFORE:", raw.map(v => getVarId(v)));
 
     const newArr = [];
 
     for (const id of orderedIds) {
-      const v = raw.find(x => getVarId(x) === id);
-      if (v) newArr.push(v);
+        const v = raw.find(x => getVarId(x) === id);
+        if (v) newArr.push(v);
     }
 
     for (const v of raw) {
-      if (!newArr.includes(v)) newArr.push(v);
+        if (!newArr.includes(v)) newArr.push(v);
     }
 
-    console.log("[ExtVars][Reorder] AFTER for", cat, ":", newArr.map(v => getVarId(v)));
+    console.log("[ExtVars][Reorder] AFTER:", newArr.map(v => getVarId(v)));
 
     if (map.variableMap_) map.variableMap_[cat] = newArr;
     if (map.variables_) map.variables_[cat] = newArr;
-  }
+
+    console.log("[ExtVars][Reorder] WRITE COMPLETE");
+    console.log("==============================================");
+}
 
   // ---------- inject CSS ----------
   (function injectStyle(){
