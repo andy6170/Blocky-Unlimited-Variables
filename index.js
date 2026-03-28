@@ -57,7 +57,7 @@
       if (map?.createVariable) return map.createVariable(name, type || "", id);
       if (ws?.createVariable) return ws.createVariable(name, type || "", id);
       if (Blockly?.Variables?.createVariable) return Blockly.Variables.createVariable(ws, name, type || "", id);
-    } catch(e) {}
+    } catch(e){}
     return null;
   }
 
@@ -84,7 +84,7 @@
     return false;
   }
 
-  // ------------------ Random Portal‑Style ID ------------------
+  // ------------------ Portal‑Style Random ID ------------------
   function makePortalRandomId() {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(){}[];:,.<>/?|`~-=+";
     let out = "";
@@ -130,6 +130,18 @@
     return live;
   }
 
+  // ------------------ Count Usage ------------------
+  function countVariableUsage(ws, varDef) {
+    const id = getVarId(varDef);
+    let count = 0;
+    const blocks = ws.getAllBlocks(false);
+    for (const block of blocks) {
+      const field = block.getField?.("VAR");
+      if (field && field.getValue?.() === id) count++;
+    }
+    return count;
+  }
+
   // ------------------ Reorder Variables ------------------
   function reorderVariablesInMap(ws, cat, orderedIds) {
     const map = workspaceGetVariableMap(ws);
@@ -150,7 +162,7 @@
 
     vm.set(cat, newArr);
 
-    // Force save (same trick as rename)
+    // Force save
     try {
       const dummyId = "EXTVARS_ORDER_DUMMY_" + Date.now();
       const dummy = createWorkspaceVariable(ws, "__ORDER_DUMMY__", "Global", dummyId);
@@ -158,19 +170,7 @@
     } catch(e){}
   }
 
-  // ------------------ Count Usage ------------------
-  function countVariableUsage(ws, varDef) {
-    const id = getVarId(varDef);
-    let count = 0;
-    const blocks = ws.getAllBlocks(false);
-    for (const block of blocks) {
-      const field = block.getField?.("VAR");
-      if (field && field.getValue?.() === id) count++;
-    }
-    return count;
-  }
-
-  // ------------------ Inject CSS ------------------
+  // ------------------ CSS ------------------
   (function injectStyle(){
     const style = document.createElement("style");
     style.textContent = `
@@ -384,48 +384,46 @@
     document.body.appendChild(modalOverlay);
   }
 
-  // ------------------ Context Menu ------------------
+  // ------------------ Context Menu (Original Working Version) ------------------
   function registerContextMenuItem(){
     try{
-      const reg = (typeof _Blockly !== "undefined" && _Blockly.ContextMenuRegistry?.registry)
-               || (typeof Blockly !== "undefined" && Blockly.ContextMenuRegistry?.registry);
-      if (reg && reg.register) {
-        const item = {
+      const reg=(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry?.registry)?_Blockly.ContextMenuRegistry.registry
+               :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry?.registry)?Blockly.ContextMenuRegistry.registry:null;
+      if(reg && typeof reg.register==="function"){
+        const item={
           id:"manageExtendedVariables",
           displayText:"Manage Variables",
           preconditionFn:()=> "enabled",
           callback:()=>openModal(),
-          scopeType: reg.ScopeType?.WORKSPACE,
+          scopeType:(typeof _Blockly!=="undefined"&&_Blockly.ContextMenuRegistry)?_Blockly.ContextMenuRegistry.ScopeType.WORKSPACE
+                   :(typeof Blockly!=="undefined"&&Blockly.ContextMenuRegistry)?Blockly.ContextMenuRegistry.ScopeType.WORKSPACE:null,
           weight:98
         };
-        try { reg.unregister(item.id); } catch(e){}
+        try{ if(reg.getItem && reg.getItem(item.id)) reg.unregister(item.id); }catch(e){}
         reg.register(item);
         return;
       }
-    } catch(e){}
+    }catch(e){}
 
-    // DOM fallback
-    document.addEventListener("contextmenu",()=>{
-      setTimeout(()=>{
-        const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
-        if(!menu || menu.querySelector("[data-extvars]")) return;
-        const el=document.createElement("div");
-        el.setAttribute("data-extvars","1");
-        el.style.padding="6px 10px";
-        el.style.cursor="pointer";
-        el.style.color="#e9eef2";
-        el.textContent="Manage Variables";
-        el.onclick=()=>{ openModal(); menu.style.display="none"; };
-        menu.appendChild(el);
-      },40);
-    });
+    // DOM fallback (your original working version)
+    (function domFallback(){
+      document.addEventListener("contextmenu",()=>{
+        setTimeout(()=>{
+          const menu=document.querySelector(".context-menu, .bp-context-menu, .blocklyContextMenu");
+          if(!menu) return;
+          if(menu.querySelector("[data-extvars]")) return;
+          const el=document.createElement("div");
+          el.setAttribute("data-extvars","1");
+          el.style.padding="6px 10px";
+          el.style.cursor="pointer";
+          el.style.color="#e9eef2";
+          el.textContent="Manage Variables";
+          el.onclick=()=>{ openModal(); menu.style.display="none"; };
+          menu.appendChild(el);
+        },40);
+      });
+    })();
   }
 
   function initialize(){
-    registerContextMenuItem();
-    if(plugin) plugin.openManager=openModal;
-  }
-
-  setTimeout(initialize,900);
-
-})();
+    register
