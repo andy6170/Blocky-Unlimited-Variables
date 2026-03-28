@@ -113,12 +113,8 @@
             const varObj = ws.getVariableById?.(val);     // lookup variable from ID
 
             if (varObj && varObj.name === newName) {
-                // force field to refresh by reassigning the SAME ID
                 varField.setValue(val);
-
-                // force block to redraw
                 block.render?.();
-
                 changed++;
             }
         } catch (e) {
@@ -128,10 +124,9 @@
 
     console.log(`[ExtVars] Rename complete: ${changed} blocks updated.`);
 
-    // Force workspace to detect a change by adding & removing a dummy variable
     try {
         const dummyName = "__EXTVARS_DUMMY__";
-        const dummyId = "EXTVARS_DUMMY_" + Date.now(); // unique ID
+        const dummyId = "EXTVARS_DUMMY_" + Date.now();
 
         const dummyVar = createWorkspaceVariable(ws, dummyName, "Global", dummyId);
 
@@ -270,8 +265,7 @@
       .ev-cat.selected{background:#6e0000;border-left:4px solid #ff0a03}
       .ev-list{flex:1;background:#000000;border-radius:8px;padding:10px;overflow:auto;display:flex;flex-direction:column}
       .ev-row{display:flex;justify-content:space-between;align-items:center;padding:8px;background:#171717;border-radius:6px;margin-bottom:8px;transition:transform 0.15s ease,box-shadow 0.15s ease,background 0.15s ease}
-      .ev-row.dragging{opacity:0.85;background:#252525;box-shadow:0 8px 24px rgba(0,0,0,0.6);transform:scale(1.01)}
-      .ev-row-placeholder{border:1px dashed #555;background:transparent}
+      .ev-row.dragging{opacity:0.9;background:#252525;box-shadow:0 8px 24px rgba(0,0,0,0.6);transform:scale(1.01)}
       .ev-btn{padding:6px 10px;border-radius:6px;border:none;color:#fff;cursor:pointer}
       .ev-add{background:#008a00}
       .ev-edit{background:#3a3a3a}
@@ -364,7 +358,7 @@
 
       center.addEventListener("dragover", ev => {
         ev.preventDefault();
-        const dragging = center.querySelector(".dragging");
+        const dragging = center.querySelector(".ev-row.dragging");
         if (!dragging) return;
 
         const rows = [...center.querySelectorAll(".ev-row:not(.dragging)")];
@@ -482,13 +476,29 @@
         row.appendChild(rightCol); 
         center.appendChild(row);
 
+        // Handle-only drag logic
+        let allowDrag = false;
+
+        dragHandle.addEventListener("mousedown", () => {
+          allowDrag = true;
+        });
+
+        document.addEventListener("mouseup", () => {
+          allowDrag = false;
+        });
+
         row.addEventListener("dragstart", ev => {
+          if (!allowDrag) {
+            ev.preventDefault();
+            return;
+          }
           ev.dataTransfer.setData("text/plain", v.id);
           row.classList.add("dragging");
         });
 
         row.addEventListener("dragend", () => {
           row.classList.remove("dragging");
+          allowDrag = false;
         });
       }
     }
