@@ -142,7 +142,7 @@
 
 function makeRandomIdFromWorkspace(length = 20) {
   // SAFE character set (no symbols)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@!*%+^-";
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
   function generateId() {
     let result = "";
