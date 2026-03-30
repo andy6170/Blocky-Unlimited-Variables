@@ -141,8 +141,9 @@
   }
 
 function makeRandomIdFromWorkspace(length = 20) {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
-  
+  // SAFE character set (no symbols)
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@!*%+^-";
+
   function generateId() {
     let result = "";
     for (let i = 0; i < length; i++) {
@@ -167,7 +168,6 @@ function makeRandomIdFromWorkspace(length = 20) {
     return newId;
 
   } catch (e) {
-    // fallback if something goes wrong
     return generateId();
   }
 }
