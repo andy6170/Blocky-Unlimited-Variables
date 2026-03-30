@@ -140,7 +140,7 @@
     }
   }
 
-function makeRandomIdFromWorkspace(length = 20) {
+function createID(length = 20) {
   // SAFE character set (no symbols)
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -469,7 +469,7 @@ try {
       addBtn.onclick = () => {
         const name = prompt("Enter variable name:");
         if (!name) return;
-        const id = makeNextSequentialIdFromWorkspace();
+        const id = createID();
         createWorkspaceVariable(ws, name, currentCategory, id);
         rebuildCategories(); 
         rebuildList();
