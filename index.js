@@ -140,21 +140,37 @@
     }
   }
 
-  function makeNextSequentialIdFromWorkspace() {
-    try {
-      const ws = getMainWorkspaceSafe();
-      const vars = workspaceGetVariables(ws);
-      let max = 0;
-      for (const v of vars) {
-        const id = getVarId(v);
-        if (typeof id === "string" && id.startsWith("EV_")) {
-          const n = parseInt(id.slice(3),10);
-          if (!isNaN(n) && n>max) max=n;
-        }
-      }
-      return "EV_"+String(max+1).padStart(4,"0");
-    } catch(e){ return "EV_0001"; }
+function makeRandomIdFromWorkspace(length = 20) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?";
+  
+  function generateId() {
+    let result = "";
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
   }
+
+  try {
+    const ws = getMainWorkspaceSafe();
+    const vars = workspaceGetVariables(ws);
+
+    const existingIds = new Set(
+      vars.map(v => getVarId(v)).filter(id => typeof id === "string")
+    );
+
+    let newId;
+    do {
+      newId = generateId();
+    } while (existingIds.has(newId));
+
+    return newId;
+
+  } catch (e) {
+    // fallback if something goes wrong
+    return generateId();
+  }
+}
 
   // ---------- live registry ----------
   function getLiveRegistry() {
